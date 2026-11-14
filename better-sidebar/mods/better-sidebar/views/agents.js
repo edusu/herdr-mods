@@ -17,6 +17,7 @@ import {
   setAgentOrder,
   window,
   layout,
+  notify,
 } from "herdr";
 import { findNode } from "./find-node.js";
 import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption } from "./ui.js";
@@ -588,6 +589,7 @@ export class Agents {
       .on_click(() => run("pane.focus", { pane: a.pane }))
       .when(Boolean(pic), (el) => el.child(this.agentIcon(a, pic, subs)))
       .child(this.agentName(a, view, t))
+      .child(this.addressChip(a, t))
       .when(Boolean(machine), (el) =>
         el.child(div().text_size(TEXT.badge).text_color(t.dim).child(machine)),
       )
@@ -603,6 +605,24 @@ export class Agents {
         ),
       )
       .child(this.status(t, a, view.byPriority && !this.pins.includes(a.address)));
+  }
+
+  // The terminal's address (`t51`, `vps/t51`); a click copies it in full without focusing the agent.
+  addressChip(a, t) {
+    return div()
+      .id(`addr-${a.address}`)
+      .flex_none()
+      .max_w(64)
+      .truncate()
+      .text_size(TEXT.badge)
+      .text_color(t.dim)
+      .hover((s) => s.text_color(t.foreground))
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        cx.write_to_clipboard(a.address);
+        notify({ title: "Address copied", body: a.address, timeout: 1600 });
+      })
+      .child(a.address);
   }
 
   // A tab with no agent, under its space in the lists view: its program and its name.
