@@ -1103,3 +1103,14 @@ test('moving to a tab with no terminal, such as a diff, keeps the PR instead of 
   h.tick();
   assert.equal(h.mod.spaceKey, key);
 });
+
+test('another mod opens a PR of this repository through shared state', () => {
+  const { context: m } = harness();
+  const now = 50000, req = { repo: 'Acme/App', number: 7, at: now - 100 };
+  assert.deepEqual({ ...m.openRequest(req, null, ['acme/app'], now) }, { repo: 'acme/app', number: 7 });
+  assert.equal(m.openRequest(req, req.at, ['acme/app'], now), null, 'seen already');
+  assert.equal(m.openRequest(req, null, ['acme/other'], now), null, 'another repository');
+  assert.equal(m.openRequest({ ...req, at: now - 20000 }, null, ['acme/app'], now), null, 'too old');
+  for (const number of [0, -1, 1.5, '7']) assert.equal(m.openRequest({ ...req, number }, null, ['acme/app'], now), null, String(number));
+  assert.equal(m.openRequest(null, null, ['acme/app'], now), null);
+});

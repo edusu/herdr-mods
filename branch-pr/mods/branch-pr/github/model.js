@@ -47,6 +47,17 @@ export function ghProblem(message) {
   return null;
 }
 
+// Another mod asks for a PR with shared("branch-pr.open") = { repo, number, at }. A
+// fresh panel may start because of that request, so freshness, not the value seen at
+// start, keeps an old request from reopening after a reload.
+export function openRequest(request, seen, repos, now) {
+  if (!request || typeof request !== "object" || request.at === seen) return null;
+  const { repo, number, at } = request;
+  if (typeof repo !== "string" || !Number.isSafeInteger(number) || number < 1 || !Number.isFinite(at) || now - at > 10000 || at > now + 1000) return null;
+  const match = repos.find((r) => r && r.toLowerCase() === repo.toLowerCase());
+  return match ? { repo: match, number } : null;
+}
+
 // Whether a mod's block is on screen: every parent shown, and the chosen child of
 // any stack. Timers keep running while hidden, so this saves GitHub's API quota.
 // shortcut: any shown copy counts for all copies; only matters with two copies in one layout.

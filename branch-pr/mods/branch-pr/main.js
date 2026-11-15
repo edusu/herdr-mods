@@ -13,7 +13,7 @@
 // github/model.js says what GitHub's answers mean; views/ui.js holds every look.
 import { View } from "gpui-kit";
 import { InputState, TextareaState } from "gpui-base";
-import { spaces, panes, nextCommand, layout, readTextFile, appHome } from "herdr";
+import { spaces, panes, nextCommand, layout, readTextFile, appHome, shared } from "herdr";
 import { loadSettings, duration } from "./settings.js";
 import { savedMethods } from "./state/saved.js";
 import { discoveryMethods } from "./github/discovery.js";
@@ -28,7 +28,7 @@ import { conversationMethods } from "./views/conversation.js";
 import { checksMethods } from "./views/checks.js";
 import { worktreeViewMethods } from "./views/worktrees.js";
 import { filesMethods } from "./views/files.js";
-import { panelShown, ghProblem } from "./github/model.js";
+import { panelShown, ghProblem, openRequest } from "./github/model.js";
 import { Panel } from "./views/ui.js";
 
 const CONTEXT_POLL_MS = 1000;
@@ -171,6 +171,13 @@ class PullRequests extends View {
       const sp = activeSpace();
       const key = spaceContextKey(sp);
       if (key !== this.spaceKey) this.changeSpace(sp, key, cx);
+      const request = shared("branch-pr.open");
+      // Waits for the repository, so a request that arrives with the panel still finds it.
+      if (this.repo && request?.at !== this.openSeen) {
+        this.openSeen = request?.at;
+        const open = openRequest(request, null, [this.repo, ...this.remotes.map((r) => r.repo)], Date.now());
+        if (open) this.openPR(open.number, cx, open.repo);
+      }
       this.rememberView();
       const minute = Math.floor(Date.now() / 60000);
       if (minute !== this.updatedMinute && this.lastUpdated) {
