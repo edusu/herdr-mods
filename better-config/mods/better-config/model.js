@@ -136,6 +136,14 @@ export function fieldsOf(schema, settings) {
 }
 
 // Why a value doesn't fit its field, or null.
+// One − or + press: value plus by, kept inside the field's limits. Rounded to the
+// step's decimals, since adding 0.05 in floating point saves 1.1500000000000001.
+export function stepValue(field, value, by) {
+  const decimals = (String(field.step).split(".")[1] ?? "").length;
+  const next = Math.min(field.max ?? Infinity, Math.max(field.min ?? -Infinity, value + by));
+  return Number(next.toFixed(decimals));
+}
+
 export function problemWith(field, value) {
   if (value === undefined) return null;
   const { type } = field;

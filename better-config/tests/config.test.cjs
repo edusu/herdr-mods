@@ -159,3 +159,12 @@ test("this repository's mods ship a schema their mod.json passes, with their cod
     assert.deepEqual(Object.keys(described).sort(), Object.keys(flatten(code)).sort(), `${name}: schema and code know different settings`);
   }
 });
+
+test("a step lands on the step's decimals and inside the limits", async () => {
+  const { stepValue } = await load();
+  const field = { step: 0.05, min: 0.8, max: 1.6 };
+  assert.equal(stepValue(field, 1.1, 0.05), 1.15);
+  assert.equal(stepValue(field, 1.1500000000000001, 0.05), 1.2);
+  assert.equal(stepValue(field, 1.6, 0.05), 1.6);
+  assert.equal(stepValue({ step: 1 }, 3, -1), 2);
+});

@@ -18,6 +18,7 @@ import {
   lostValues,
   editManifest,
   equal,
+  stepValue,
 } from "./model.js";
 
 const I = (name) => `mods/better-config/icons/${name}.svg`;
@@ -440,11 +441,10 @@ export default class BetterConfig extends View {
         ? this.segments(t, id, field.choices, shown, (v, cx) => set(v, cx))
         : this.dropdown(t, id, field.title, field.choices, shown, (v, cx) => set(v, cx));
     if (field.type === "number" && typeof shown === "number") {
-      const clamp = (v) => Math.min(field.max ?? Infinity, Math.max(field.min ?? -Infinity, v));
       return h_flex()
         .gap(6)
         .items_center()
-        .child(this.stepper(t, id, shown, field.step, (by, cx) => set(clamp(shown + by), cx)))
+        .child(this.stepper(t, id, shown, field.step, (by, cx) => set(stepValue(field, shown, by), cx)))
         .when(Boolean(field.unit), (el) => el.child(div().text_size(12.5).text_color(t.dim).child(field.unit)));
     }
     return this.textBox(t, mod, field, value);
