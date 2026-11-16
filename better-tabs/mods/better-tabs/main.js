@@ -6,6 +6,7 @@
 //   views/drags.js         dragging tabs and toolbar actions
 //   views/tab-bar.js       the bar: tabs, +, toolbar, ⋮
 //   views/menu.js          the ⋮ menu and toolbar action buttons
+//   views/tab-menu.js      a tab's right-click menu
 // actions/ holds the logic with no drawing, views/ui.js the shared look.
 import { View } from "gpui-kit";
 import { shared, setShared, nextCommand, props, notify } from "herdr";
@@ -16,6 +17,7 @@ import { arrangementMethods } from "./views/arrangement.js";
 import { dragMethods, DRAG_KEY, DRAG_TIMEOUT_MS } from "./views/drags.js";
 import { tabBarMethods } from "./views/tab-bar.js";
 import { menuMethods } from "./views/menu.js";
+import { tabMenuMethods } from "./views/tab-menu.js";
 
 // Preferences a person may change in the installed mod.json under `settings`.
 const DEFAULT_SETTINGS = { tabs: { max_width: 170, drag_delay: "400ms" }, menu: { width: 240 } };
@@ -63,7 +65,8 @@ class Tabs extends View {
     } catch {
       /* Ignore malformed saved preferences. */
     }
-    if (this.config().mode !== "overflow") {
+    // A popup copy (the ⋮ menu or a tab menu) leaves the bar's work to the bar.
+    if (!this.config().mode) {
       // Synchronization can issue layout commands, so it must not run in render.
       this.syncPanel();
       cx.timer.every(300, () => {
@@ -105,6 +108,7 @@ Object.assign(
   dragMethods,
   tabBarMethods,
   menuMethods,
+  tabMenuMethods,
 );
 
 export default Tabs;

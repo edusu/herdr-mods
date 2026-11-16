@@ -9,7 +9,8 @@ A tab bar for [Herdr Desktop](https://herdr.dev/): tabs you can drag, that wrap 
 - The **+** sits right after the last tab.
 - **Drag panel buttons** (Files, Changes and any you add) to reorder them, the same way.
 - **The ⋮ menu:** drop a panel button on it to hide it. Click **⋮** to see hidden buttons, then click one to use it, drag it back out, or click its **pin** to return it to the toolbar. The menu also holds buttons there's no room for.
-- Double-click to rename, right-click for the tab menu, and close the active tab with its ×.
+- Double-click to rename, and close the active tab with its ×.
+- Right-click a tab to rename, close or open a new tab, or copy its terminal addresses (`t9, t12`) to hand to an agent, which reads them with `hc read t9`.
 - Program icons, working spinners and blocked or done dots.
 - Each space remembers which panel it had open.
 - Window controls where the system needs them.
@@ -87,7 +88,7 @@ In `mods/better-tabs/`:
 
 - `main.js`: setup, settings and commands. `settings.js`: shared with the other mods.
 - `actions/engine.js`: what a button does. `actions/toolbar.js`: arrangement and tab-move logic with no drawing.
-- `views/tab-bar.js`: the bar. `views/menu.js`: buttons and the ⋮ menu. `views/drags.js`: dragging. `views/arrangement.js`: saved order. `views/panel-memory.js`: panels per space. `views/ui.js`: the design kit.
+- `views/tab-bar.js`: the bar. `views/menu.js`: buttons and the ⋮ menu. `views/tab-menu.js`: a tab's right-click menu. `views/drags.js`: dragging. `views/arrangement.js`: saved order. `views/panel-memory.js`: panels per space. `views/ui.js`: the design kit.
 - `icons/`: this mod's icons.
 - `sync.sh`: copies the mod into Herdr, which reloads it. A symlink loads the code but not the icons.
 

@@ -16,7 +16,7 @@ The ⋮ menu is a 240px popup on `popover` with 5px padding and 32px rows, listi
 
 ## How it behaves
 
-A press becomes a drag only after 400ms and 12px of movement, for tabs and toolbar buttons alike; anything less is a click. Nothing moves until release. Leaving the bar cancels a drag. Dropping a tab on + puts it last. A tab's click selects it, double-click renames it through `tab.rename`, and right-click opens the shipped `menu` mod. `tab.move` takes a one-based index.
+A press becomes a drag only after 400ms and 12px of movement, for tabs and toolbar buttons alike; anything less is a click. Nothing moves until release. Leaving the bar cancels a drag. Dropping a tab on + puts it last. A tab's click selects it, double-click renames it through `tab.rename`, and right-click opens this mod's own popup with Rename, New tab, Copy terminal address (the tab's panes' terminals, comma-separated, through `cx.write_to_clipboard`) and Close; the shipped `menu` is read-only, so it can't take the extra item. `tab.move` takes a one-based index.
 
 Dropping a toolbar button on ⋮ hides it. In the menu, clicking a row runs its action, dragging out closes the menu so it can be dropped on the toolbar, and the pin restores it at the front. Buttons that don't fit the width also go in the menu. The arrangement is saved by button ID, per layout, in `shared("better-tabs.toolbar")`.
 
@@ -28,7 +28,7 @@ Actions are `panel` (`container`, `stack`, `target`) and `command` (`name`, `arg
 
 ## Built from
 
-One folder, `mods/better-tabs/`: `main.js`, `settings.js`, `mod.json` (`place: none`), `mod.schema.json` (its settings with their defaults, which the code's `DEFAULT_SETTINGS` must match), `actions/` (`engine.js`, `toolbar.js`), `views/` (`tab-bar.js`, `menu.js`, `drags.js`, `arrangement.js`, `panel-memory.js`, `ui.js`) and `icons/`. It uses `div`, `svg`, `image`, flex containers and popups through `openOverlay`. It runs no programs. Mod tabs show the icon in `shared("mod-icons")[mod]`. On macOS it leaves room for the traffic lights when the sidebar doesn't.
+One folder, `mods/better-tabs/`: `main.js`, `settings.js`, `mod.json` (`place: none`), `mod.schema.json` (its settings with their defaults, which the code's `DEFAULT_SETTINGS` must match), `actions/` (`engine.js`, `toolbar.js`), `views/` (`tab-bar.js`, `menu.js`, `tab-menu.js`, `drags.js`, `arrangement.js`, `panel-memory.js`, `ui.js`) and `icons/`. It uses `div`, `svg`, `image`, flex containers and popups through `openOverlay`. It runs no programs. Mod tabs show the icon in `shared("mod-icons")[mod]`. On macOS it leaves room for the traffic lights when the sidebar doesn't.
 
 ## Watch out
 

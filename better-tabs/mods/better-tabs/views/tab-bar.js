@@ -69,12 +69,7 @@ export const tabBarMethods = {
       .on_mouse_down("right", (_e, cx) => {
         cx.stop_propagation();
         this.cancelDrags(cx);
-        openOverlay({
-          mod: "menu",
-          kind: "popup",
-          width: 200,
-          props: { tab: "tab", target: { id: tab.id, space: space.id } },
-        });
+        this.openTabMenu(tab, space);
       })
       .when(Boolean(icon), (el) => el.child(icon))
       .child(
@@ -156,6 +151,7 @@ export const tabBarMethods = {
 
   render() {
     if (this.config().mode === "overflow") return this.renderOverflow();
+    if (this.config().mode === "tab-menu") return this.renderTabMenu();
     const t = theme();
     const bar = h_flex()
       .id("better-tabs-root")

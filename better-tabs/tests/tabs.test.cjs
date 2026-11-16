@@ -97,6 +97,7 @@ function harness(config = {}) {
       "views/arrangement.js",
       "views/drags.js",
       "views/menu.js",
+      "views/tab-menu.js",
       "views/tab-bar.js",
       "main.js",
     ]
@@ -212,7 +213,27 @@ test("tabs select, drag reorder, rename, close, and open context menus", () => {
   h.find(el, "tab-t2").handlers["on_mouse_up:left"]({}, h.cx);
   assert.equal(h.calls.at(-1).name, "tab.select");
   h.find(el, "tab-t2").handlers["on_mouse_down:right"]({}, h.cx);
-  assert.equal(h.calls.at(-1).overlay.mod, "menu");
+  assert.equal(h.calls.at(-1).overlay.mod, "better-tabs");
+  assert.equal(h.calls.at(-1).overlay.props.mode, "tab-menu");
+});
+test("the tab menu copies the tab's terminal addresses and runs tab commands", () => {
+  const h = harness({ mode: "tab-menu", overlay: "o1", target: { id: "t1", space: "a" } });
+  h.setPanes([
+    { pane: "p1", tab: "t1", terminal: "t9" },
+    { pane: "p2", tab: "t1", terminal: null, mod: "files" },
+    { pane: "p3", tab: "t1", terminal: "t12" },
+    { pane: "p4", tab: "t2", terminal: "t3" },
+  ]);
+  let copied;
+  const cx = { ...h.cx, write_to_clipboard: (text) => (copied = text) };
+  const el = h.tabs.render(cx);
+  h.find(el, "tab-menu-copy").handlers.on_click({}, cx);
+  assert.equal(copied, "t9, t12");
+  assert.equal(h.calls[0].close, "o1");
+  h.find(el, "tab-menu-close").handlers.on_click({}, cx);
+  assert.deepEqual(plain(h.calls.at(-1)), { name: "tab.close", args: { id: "t1" } });
+  h.setPanes([{ pane: "p1", tab: "t1", terminal: null, mod: "files" }]);
+  assert.equal(h.find(h.tabs.render(cx), "tab-menu-copy"), undefined);
 });
 test("overflow uses this mod and includes hidden-toolbar actions ", () => {
   const h = harness({
