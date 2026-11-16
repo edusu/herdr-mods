@@ -6,7 +6,7 @@ import { baseName, holdsChange, TOTAL_ROWS } from "../files/model.js";
 import { viewerEntries } from "../actions/open.js";
 import { foundEditors } from "../actions/outside.js";
 import { agentName } from "../actions/agents.js";
-import { TEXT, Badge, Button, Chevron, FileIcon, Icon, markColor, IconButton, Message, Panel, PanelHeader, StatusLetter, TextBox } from "./ui.js";
+import { TEXT, iconPx, rowPx, Badge, Button, Chevron, FileIcon, Icon, markColor, IconButton, Message, Panel, PanelHeader, StatusLetter, TextBox } from "./ui.js";
 
 const INDENT = 14;
 const FOLDER_LABEL = 28;
@@ -64,7 +64,7 @@ export const treeMethods = {
     const selected = !dir && Object.values(viewerEntries()).some((v) => v.file?.path === path);
     return h_flex()
       .id(`files-row-${relative}`)
-      .h(26)
+      .h(rowPx(26))
       .flex_none()
       .pl(8 + depth * INDENT)
       .pr(8)
@@ -84,7 +84,7 @@ export const treeMethods = {
         cx.stop_propagation();
         this.showRowMenu(this.targetOf(relative, dir));
       })
-      .child(dir ? Chevron(open) : div().w(14).flex_none())
+      .child(dir ? Chevron(open) : div().w(iconPx(14)).flex_none())
       .child(FileIcon({ icons: this.fileIcons, path, dir, open, color: t.muted, t }))
       .child(
         div()
@@ -96,7 +96,7 @@ export const treeMethods = {
       )
       .when(Boolean(change), (el) => el.child(StatusLetter(change.mark)))
       .when(dir && holdsChange(this.marks, path), (el) =>
-        el.child(div().size(6).flex_none().rounded(3).bg(t.ansi3)),
+        el.child(div().size(iconPx(6)).flex_none().rounded(3).bg(t.ansi3)),
       );
   },
 
@@ -119,7 +119,7 @@ export const treeMethods = {
       width: 200,
       trigger: div()
         .id("files-folder-trigger")
-        .size(26)
+        .size(iconPx(26))
         .flex_none()
         .flex()
         .items_center()

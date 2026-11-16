@@ -87,10 +87,10 @@ The PR badge has no merge or review controls. Selecting its row selects the spac
 Add a `settings` block to the installed `mods/better-sidebar/mod.json` with only what you change. Copy your edits forward when you update the mod. `mod.schema.json` beside it describes every setting, so an editor that reads `$schema`, such as VS Code or Zed, checks the block as you type. The defaults:
 
 ```json
-"settings": { "git": { "retry_after": "15s" }, "combined": true, "pull_request_status": true }
+"settings": { "git": { "retry_after": "15s" }, "combined": true, "pull_request_status": true, "font_size": 13, "scale": 1 }
 ```
 
-`git.retry_after` is how long a failed Git read waits before it is tried again. `combined` set to `false` shows the `lists` view as spaces above agents instead of tabs. `pull_request_status` set to `false` turns off the `gh` calls that colour pull-request state, for people without the GitHub CLI. Problems with the block are logged, not shown.
+`git.retry_after` is how long a failed Git read waits before it is tried again. `combined` set to `false` shows the `lists` view as spaces above agents instead of tabs. `pull_request_status` set to `false` turns off the `gh` calls that colour pull-request state, for people without the GitHub CLI. `font_size` is the panel's main text size in px, 9 to 24; smaller and larger text keep their proportion to it, and code that follows the terminal's font doesn't change. `scale` sizes icons, buttons and row heights, 0.8 to 1.6; a row holding text grows with whichever of the two is larger. Problems with the block are logged, not shown.
 
 ## Development
 

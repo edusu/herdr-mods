@@ -17,6 +17,8 @@ import { agentName } from "../actions/agents.js";
 import { stateIcon } from "./list.js";
 import {
   TEXT,
+  iconPx,
+  rowPx,
   codeFont,
   halfTone,
   Button,
@@ -157,7 +159,7 @@ export const detailMethods = {
       .child(
         h_flex()
           .gap(8)
-          .min_h(26)
+          .min_h(rowPx(26))
           .items_center()
           .child(
             div()
@@ -181,7 +183,7 @@ export const detailMethods = {
     return h_flex()
       .id("pr-merged")
       .flex_none()
-      .h(26)
+      .h(rowPx(26))
       .px(8)
       .gap(5)
       .items_center()
@@ -393,7 +395,7 @@ export const detailMethods = {
             .tooltip("Go to this agent")
             .child(
               div()
-                .size(8)
+                .size(iconPx(8))
                 .flex_none()
                 .mx(3)
                 .rounded(4)

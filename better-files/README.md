@@ -62,11 +62,13 @@ Add a `settings` block to the installed `mods/better-files/mod.json` with only w
   "refresh": { "tree": "10s", "file": "2s" },
   "editors": [{ "name": "PhpStorm", "bundle": "com.jetbrains.PhpStorm" }],
   "gutter": true,
-  "markdown": "preview"
+  "markdown": "preview",
+  "font_size": 13,
+  "scale": 1
 }
 ```
 
-`refresh.tree` is how often the tree rereads, on top of watching the folder, and never closer than 1 second. `refresh.file` is how often an open file is checked, never closer than 500ms. `editors` adds to the built-in list, by macOS app ID, and is only offered if installed. `gutter: false` uses Herdr's own editor instead: selection, folding and a real grammar, but no line colours. Its grammars have no TypeScript or Vue, so those are highlighted as JavaScript and HTML. `markdown` is how a Markdown file first opens, `"preview"` or `"code"`; the toggle in a tab overrides it for that tab.
+`refresh.tree` is how often the tree rereads, on top of watching the folder, and never closer than 1 second. `refresh.file` is how often an open file is checked, never closer than 500ms. `editors` adds to the built-in list, by macOS app ID, and is only offered if installed. `gutter: false` uses Herdr's own editor instead: selection, folding and a real grammar, but no line colours. Its grammars have no TypeScript or Vue, so those are highlighted as JavaScript and HTML. `markdown` is how a Markdown file first opens, `"preview"` or `"code"`; the toggle in a tab overrides it for that tab. `font_size` is the panel's main text size in px, 9 to 24; smaller and larger text keep their proportion to it, and code that follows the terminal's font doesn't change. `scale` sizes icons, buttons and row heights, 0.8 to 1.6; a row holding text grows with whichever of the two is larger.
 
 ## Limits
 

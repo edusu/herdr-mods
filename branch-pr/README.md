@@ -93,11 +93,13 @@ Add a `settings` block to the installed `mods/branch-pr/mod.json` with only what
   "list": { "page_size": 25, "default": { "tab": "all", "state": "open" } },
   "worktrees": { "root": "~/.herdr/worktrees", "open_with": "terminal" },
   "logs": { "keep_last": "60KB" },
-  "tools": { "github": "gh" }
+  "tools": { "github": "gh" },
+  "font_size": 13,
+  "scale": 1
 }
 ```
 
-`refresh.every` is how often a visible panel re-reads. `list.default` picks the first filters until a saved view exists. `worktrees.root` is where New worktree puts checkouts; `open_with` is `terminal` or an installed agent's key. `logs.keep_last` caps failed output. `tools.github` is the path to `gh`. Unknown keys and wrong types are reported at the top of the panel and ignored.
+`refresh.every` is how often a visible panel re-reads. `list.default` picks the first filters until a saved view exists. `worktrees.root` is where New worktree puts checkouts; `open_with` is `terminal` or an installed agent's key. `logs.keep_last` caps failed output. `tools.github` is the path to `gh`. `font_size` is the panel's main text size in px, 9 to 24; smaller and larger text keep their proportion to it, and code that follows the terminal's font doesn't change. `scale` sizes icons, buttons and row heights, 0.8 to 1.6; a row holding text grows with whichever of the two is larger. Unknown keys and wrong types are reported at the top of the panel and ignored.
 
 ## Development
 

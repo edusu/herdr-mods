@@ -21,7 +21,7 @@ import { WHOLE_FILE_LINES, highlightLines, languageOf as lexerLanguage, syntaxCo
 import { viewerEntries } from "../actions/open.js";
 import { foundEditors } from "../actions/outside.js";
 import { fileIcon, isLight } from "../files/file-icons.js";
-import { TEXT, FileIcon, Markdown, Message, MenuButton, TextButton, codeFont, codeSize } from "./ui.js";
+import { TEXT, rowPx, FileIcon, Markdown, Message, MenuButton, TextButton, codeFont, codeSize } from "./ui.js";
 
 const CHAR_WIDTH = 0.62; // Of the code font's size, to size the sideways scroll.
 const LINE_COLUMNS = 6; // The number column and a margin, in the same units.
@@ -582,7 +582,7 @@ export const viewerMethods = {
       root.child(
         h_flex()
           .id("viewer-bar")
-          .h(30)
+          .h(rowPx(30))
           .flex_none()
           .px(10)
           .gap(8)

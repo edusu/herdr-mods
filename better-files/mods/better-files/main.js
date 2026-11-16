@@ -25,14 +25,26 @@ import { menuMethods } from "./actions/menus.js";
 import { treeMethods } from "./views/tree.js";
 import { viewerMethods } from "./views/viewer.js";
 import { contextMenuMethods } from "./views/context-menu.js";
+import { setScale } from "./views/ui.js";
 
-const DEFAULT_SETTINGS = { refresh: { tree: "10s", file: "2s" }, editors: [], gutter: true, markdown: "preview" };
+const DEFAULT_SETTINGS = {
+  refresh: { tree: "10s", file: "2s" },
+  editors: [],
+  gutter: true,
+  markdown: "preview",
+  font_size: 13,
+  scale: 1,
+};
 const SYNC_MS = 300;
 
 class BetterFiles extends View {
   init(given, cx) {
     const p = props() ?? given ?? {};
     this.mode = p.mode ?? "sidebar";
+    cx.spawn(async (cx) => {
+      setScale((await loadSettings("better-files", DEFAULT_SETTINGS)).settings);
+      cx.notify();
+    });
     if (this.mode === "menu") {
       this.menuTarget = p.target;
       this.menuSpace = spaces().find((s) => s.active)?.id;

@@ -5,21 +5,41 @@ import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, Popover } from "gpui-base";
 import { theme } from "herdr";
 
-// Plain px: Herdr scales a mod's sizes by zoom itself.
-export const TEXT = {
+// Plain px: Herdr scales a mod's sizes by zoom itself. The mod's own font_size and
+// scale settings resize on top of that, through setScale.
+const BASE_TEXT = {
   badge: 10,
   avatar: 10.5,
   caption: 11,
   label: 11.5,
   small: 12,
+  tab: 12.5,
   menu: 12.8,
   body: 13,
 };
+export const TEXT = { ...BASE_TEXT };
 const RADIUS = { small: 4, control: 6, row: 7 };
-export const SIZE = { group: 30, menu: 31, row: 28, icon: 26, iconSmall: 20 };
+// icon and iconSmall hold no text.
+const BASE_SIZE = { group: 30, menu: 31, row: 28, icon: 26, iconSmall: 20 };
+export const SIZE = { ...BASE_SIZE };
+let iconScale = 1;
+let rowScale = 1;
+// Icons, icon buttons and other sizes that hold no text, in whole px.
+export const iconPx = (n) => Math.round(n * iconScale);
+// A size that holds text follows the larger of the two settings, so its text always fits.
+export const rowPx = (n) => Math.round(n * rowScale);
+
+// Clamped here too: mod.json is edited by hand, and a 0 would hide the mod.
+export function setScale({ scale, font_size }) {
+  const text = Math.min(24, Math.max(9, font_size)) / BASE_TEXT.body;
+  iconScale = Math.min(1.6, Math.max(0.8, scale));
+  rowScale = Math.max(iconScale, text);
+  for (const key in BASE_TEXT) TEXT[key] = BASE_TEXT[key] * text;
+  for (const key in BASE_SIZE) SIZE[key] = (key.startsWith("icon") ? iconPx : rowPx)(BASE_SIZE[key]);
+}
 
 export const Icon = (name, size = 14) =>
-  svg(`mods/better-sidebar/icons/${name}.svg`).size(size).flex_none();
+  svg(`mods/better-sidebar/icons/${name}.svg`).size(iconPx(size)).flex_none();
 
 export function Badge(text) {
   const t = theme();
@@ -111,7 +131,7 @@ export function Rail(kind, mid = 15) {
     .self_stretch()
     .when(kind === "│" || kind === "├", (el) => el.child(line().bottom(0).border_l(1.5)))
     .when(kind === "├" || kind === "└", (el) =>
-      el.child(line().h(mid).w(7).border_l(1.5).border_b(1.5).rounded_bl(6)),
+      el.child(line().h(rowPx(mid)).w(7).border_l(1.5).border_b(1.5).rounded_bl(6)),
     );
 }
 

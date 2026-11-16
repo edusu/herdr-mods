@@ -2,7 +2,7 @@
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { run, theme } from "herdr";
-import { TEXT, Button, Row, TextButton, TextField } from "./ui.js";
+import { TEXT, rowPx, Button, Row, TextButton, TextField } from "./ui.js";
 
 export const worktreeViewMethods = {
   worktreeRows(body) {
@@ -82,7 +82,7 @@ export const worktreeViewMethods = {
       h_flex()
         .gap(8)
         .items_center()
-        .child(div().w(62).flex_none().text_size(TEXT.small).text_color(t.dim).child(label))
+        .child(div().w(rowPx(62)).flex_none().text_size(TEXT.small).text_color(t.dim).child(label))
         .child(TextField({ id: `pr-worktree-${id}`, state, height: 28 }));
     if (!form.path)
       box.child(field("branch", "Branch", form.branch)).child(field("name", "Worktree", form.name));

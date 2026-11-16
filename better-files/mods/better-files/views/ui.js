@@ -6,8 +6,24 @@ import { h_flex, v_flex, Popover, Textarea, TextView } from "gpui-base";
 import { theme, settings } from "herdr";
 import { fileIcon, isLight } from "../files/file-icons.js";
 
-// Plain px: Herdr scales a mod's sizes by zoom itself.
-export const TEXT = { badge: 10, caption: 11, small: 12, tab: 12.8, body: 13 };
+// Plain px: Herdr scales a mod's sizes by zoom itself. The mod's own font_size and
+// scale settings resize on top of that, through setScale.
+const BASE_TEXT = { badge: 10, caption: 11, small: 12, tab: 12.8, body: 13 };
+export const TEXT = { ...BASE_TEXT };
+let iconScale = 1;
+let rowScale = 1;
+// Icons, icon buttons and other sizes that hold no text, in whole px.
+export const iconPx = (n) => Math.round(n * iconScale);
+// A size that holds text follows the larger of the two settings, so its text always fits.
+export const rowPx = (n) => Math.round(n * rowScale);
+
+// Clamped here too: mod.json is edited by hand, and a 0 would hide the mod.
+export function setScale({ scale, font_size }) {
+  const text = Math.min(24, Math.max(9, font_size)) / BASE_TEXT.body;
+  iconScale = Math.min(1.6, Math.max(0.8, scale));
+  rowScale = Math.max(iconScale, text);
+  for (const key in BASE_TEXT) TEXT[key] = BASE_TEXT[key] * text;
+}
 // One turn of a spinning icon, the speed of Herdr's own spinner.
 export const SPIN_MS = 900;
 
@@ -16,13 +32,13 @@ export const codeFont = () => settings().font_family ?? "JetBrains Mono";
 export const codeSize = () => settings().font_size ?? 14;
 
 export const Icon = (name, size = 14) =>
-  svg(`mods/better-files/icons/${name}.svg`).size(size).flex_none();
+  svg(`mods/better-files/icons/${name}.svg`).size(iconPx(size)).flex_none();
 
 // A file's or folder's icon: Better Icons' full-colour one when it's installed, else this
 // mod's own, tinted. t: the theme the caller already holds, so a row asks Herdr for nothing more.
 export function FileIcon({ icons, path, dir = false, open = false, color, t, size = 14 }) {
   const picture = fileIcon(icons, path, { dir, open, light: isLight(t.background) });
-  return picture ? image(picture).size(size).flex_none() : Icon(dir ? "folder" : "file", size).text_color(color);
+  return picture ? image(picture).size(iconPx(size)).flex_none() : Icon(dir ? "folder" : "file", size).text_color(color);
 }
 
 // A sidebar panel's frame.
@@ -44,7 +60,7 @@ export function Panel({ id }) {
 
 export function PanelHeader() {
   const t = theme();
-  return h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border);
+  return h_flex().h(rowPx(42)).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border);
 }
 
 export function Badge(text) {
@@ -73,7 +89,7 @@ export function IconButton({
   const t = theme();
   return div()
     .id(id)
-    .size(small ? 22 : 26)
+    .size(iconPx(small ? 22 : 26))
     .flex_none()
     .flex()
     .items_center()
@@ -99,7 +115,7 @@ export function TextButton({ id, icon, label, onClick, disabled = false, active 
   const t = theme();
   return h_flex()
     .id(id)
-    .h(22)
+    .h(rowPx(22))
     .flex_none()
     .px(6)
     .gap(4)
@@ -127,7 +143,7 @@ export function Button({ id, icon, label, onClick, primary = false, disabled = f
   const solid = primary && !disabled;
   return h_flex()
     .id(id)
-    .h(32)
+    .h(rowPx(32))
     .flex_none()
     .px(14)
     .gap(7)
@@ -153,7 +169,7 @@ export function MenuButton({ id, label }) {
   const t = theme();
   return h_flex()
     .id(id)
-    .h(26)
+    .h(rowPx(26))
     .flex_none()
     .px(8)
     .gap(5)
@@ -172,7 +188,7 @@ export function MenuButton({ id, label }) {
 export function Chevron(open) {
   const t = theme();
   return div()
-    .w(14)
+    .w(iconPx(14))
     .flex_none()
     .flex()
     .items_center()
@@ -201,7 +217,7 @@ export function TextBox({ id, state, label, height = 96 }) {
   return Textarea.new(state)
     .id(id)
     .w_full()
-    .h(height)
+    .h(rowPx(height))
     .px(10)
     .py(7)
     .rounded(8)
@@ -259,7 +275,7 @@ export function Select({
     trigger ??
     h_flex()
       .id(`${id}-trigger`)
-      .h(small ? 26 : 32)
+      .h(rowPx(small ? 26 : 32))
       .flex_none()
       .px(small ? 8 : 10)
       .gap(6)
@@ -298,7 +314,7 @@ export function Select({
     v_flex()
       .id(`${id}-option-${choice.id}`)
       .flex_none()
-      .min_h(31)
+      .min_h(rowPx(31))
       .px(8)
       .py(5)
       .gap(1)
@@ -339,7 +355,7 @@ export function StatusLetter(status) {
   const t = theme();
   const color = markColor(status, t);
   return div()
-    .w(12)
+    .w(rowPx(12))
     .flex_none()
     .text_center()
     .text_size(TEXT.caption)

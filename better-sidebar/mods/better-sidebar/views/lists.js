@@ -5,7 +5,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { agents, focused, theme, setAgentOrder } from "herdr";
 import { Spaces } from "./spaces.js";
 import { Agents } from "./agents.js";
-import { TEXT, Badge, Rail } from "./ui.js";
+import { TEXT, rowPx, Badge, Rail } from "./ui.js";
 
 const TABS = ["spaces", "agents"];
 
@@ -100,7 +100,7 @@ export class Lists {
       h_flex()
         .id(`lists-tab-${id}`)
         .px(10)
-        .h(24)
+        .h(rowPx(24))
         .gap(5)
         .justify_center()
         .items_center()

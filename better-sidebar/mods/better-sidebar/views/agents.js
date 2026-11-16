@@ -20,7 +20,7 @@ import {
   notify,
 } from "herdr";
 import { findNode } from "./find-node.js";
-import { TEXT, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption } from "./ui.js";
+import { TEXT, iconPx, rowPx, Icon, IconButton, GroupHeader, Menu, MenuLabel, MenuOption } from "./ui.js";
 
 // The sidebar's rail goes by its width, not a flag: dragging its edge narrows it too.
 const narrow = () => (findNode(layout(), "sidebar")?.size?.px ?? Infinity) < 160;
@@ -117,8 +117,8 @@ function duration(ms) {
 function icon(p, size, color) {
   if (!p?.icon) return null;
   return p.tint
-    ? svg(p.icon).size(size).flex_none().text_color(color)
-    : image(p.icon).w(size).h(size).flex_none();
+    ? svg(p.icon).size(iconPx(size)).flex_none().text_color(color)
+    : image(p.icon).size(iconPx(size)).flex_none();
 }
 
 // What a row calls an agent: its tab's title, or failing that its own.
@@ -275,11 +275,11 @@ export class Agents {
       .pl(39)
       .pr(8)
       .rounded(8)
-      .h(26)
+      .h(rowPx(26))
       .flex_none()
       .gap(0)
       .items_center()
-      .text_size(12.5)
+      .text_size(TEXT.tab)
       .when(on, (el) => el.bg(t.raised))
       .hover((s) => s.bg(t.hover))
       .on_click(() => this.peek(k.address))
@@ -311,10 +311,10 @@ export class Agents {
   status(t, a, compact = false) {
     const color = t[a.status] ?? t.dim;
     if (a.status === "working")
-      return Icon("spinner").size(12).mx(1).flex_none().text_color(t.working).spin(900);
+      return Icon("spinner").size(iconPx(12)).mx(1).flex_none().text_color(t.working).spin(900);
     if (a.status === "blocked" && compact)
       return div()
-        .size(14)
+        .size(iconPx(14))
         .flex_none()
         .rounded(4)
         .bg(t.blocked + "26")
@@ -329,7 +329,7 @@ export class Agents {
       return div()
         .flex_none()
         .px(6)
-        .h(18)
+        .h(rowPx(18))
         .rounded(5)
         .bg(t.blocked + "26")
         .text_size(TEXT.avatar)
@@ -341,14 +341,14 @@ export class Agents {
     // Idle: a ring; done: a dot.
     if (a.status === "idle")
       return div()
-        .size(7)
+        .size(iconPx(7))
         .mx(3)
         .flex_none()
         .rounded(4)
         .border(1.5)
         .border_color(t.idle ?? t.dim);
     return div()
-      .size(7)
+      .size(iconPx(7))
       .mx(3)
       .flex_none()
       .rounded(4)
@@ -463,7 +463,7 @@ export class Agents {
   heading(sort, t) {
     return h_flex()
       .px(16)
-      .h(41)
+      .h(rowPx(41))
       .pt(14)
       .pb(5)
       .flex_none()
@@ -486,7 +486,7 @@ export class Agents {
   // Under the compact rail, the way back to the full sidebar.
   expandRow(t) {
     return h_flex()
-      .h(28)
+      .h(rowPx(28))
       .items_center()
       .justify_center()
       .child(
@@ -538,7 +538,7 @@ export class Agents {
   railRow(a, i, t) {
     return h_flex()
       .id(`ag-${a.address}`)
-      .h(26)
+      .h(rowPx(26))
       .px(8)
       .flex_none()
       .items_center()
@@ -556,7 +556,7 @@ export class Agents {
       )
       .child(
         h_flex()
-          .w(14)
+          .w(iconPx(14))
           .flex_none()
           .items_center()
           .justify_center()
@@ -573,7 +573,7 @@ export class Agents {
     return h_flex()
       .id(`ag-${a.address}`)
       .px(8)
-      .h(30)
+      .h(rowPx(30))
       .flex_none()
       .rounded(8)
       .items_center()
@@ -634,11 +634,11 @@ export class Agents {
     // A mod's pane runs no program, but the mod may publish an icon, as Better Tabs reads it.
     const modIcon = shared("mod-icons")?.[panes().find((p) => p.tab === tab.id && p.mod)?.mod];
     const pic =
-      icon(l?.program, 16, t.dim) ?? (modIcon ? svg(modIcon).size(16).flex_none().text_color(t.dim) : null);
+      icon(l?.program, 16, t.dim) ?? (modIcon ? svg(modIcon).size(iconPx(16)).flex_none().text_color(t.dim) : null);
     return h_flex()
       .id(`tab-${tab.id}`)
       .px(8)
-      .h(30)
+      .h(rowPx(30))
       .flex_none()
       .rounded(8)
       .items_center()
@@ -650,7 +650,7 @@ export class Agents {
         run("space.select", { id: w.id });
         run("tab.select", { id: tab.id });
       })
-      .child(pic ?? div().w(16).flex_none())
+      .child(pic ?? div().w(iconPx(16)).flex_none())
       .child(
         h_flex()
           .flex_1()
@@ -716,7 +716,7 @@ export class Agents {
     const open = !this.folded.has(a.address);
     return div()
       .id(`fold-${a.address}`)
-      .h(18)
+      .h(rowPx(18))
       .px(3)
       .gap(3)
       .flex()

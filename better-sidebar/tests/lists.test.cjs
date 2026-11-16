@@ -149,3 +149,24 @@ test("a mod's tab shows the icon the mod publishes, and a tab with neither keeps
   const { mod: bare } = await harness();
   assert.doesNotMatch(text(find(bare.render(), "tab-d")), /svg:/);
 });
+
+test("font_size scales text and grows rows; scale sizes icons and heights; the defaults change nothing", () => {
+  const context = { theme: () => ({}) };
+  vm.createContext(context);
+  const ui = fs.readFileSync(path.join(runtime, "views/ui.js"), "utf8").replace(/^import\s+[\s\S]*?;$/gm, "").replace(/^export /gm, "");
+  vm.runInContext(`${ui}\nObject.assign(globalThis, { TEXT, SIZE, iconPx, rowPx, setScale });`, context);
+  const { TEXT, iconPx, rowPx, setScale } = context;
+  const base = { ...TEXT };
+  setScale({ font_size: 13, scale: 1 });
+  assert.deepEqual({ ...TEXT }, base);
+  assert.equal(rowPx(26), 26); assert.equal(iconPx(14), 14);
+  assert.deepEqual({ ...context.SIZE }, { group: 30, menu: 31, row: 28, icon: 26, iconSmall: 20 });
+  setScale({ font_size: 16.25, scale: 1 });
+  assert.equal(TEXT.body, 16.25); assert.equal(TEXT.caption, base.caption * 1.25);
+  assert.equal(rowPx(26), 33); assert.equal(iconPx(14), 14);
+  assert.equal(context.SIZE.group, 38); assert.equal(context.SIZE.icon, 26);
+  setScale({ font_size: 13, scale: 1.25 });
+  assert.deepEqual({ ...TEXT }, base);
+  assert.equal(rowPx(26), 33); assert.equal(iconPx(15), 19); assert.ok(Number.isInteger(rowPx(29)));
+  assert.equal(context.SIZE.icon, 33);
+});

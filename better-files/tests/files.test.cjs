@@ -930,3 +930,21 @@ test('syntax.js is the same file in Better Files and Better Changes', () => {
   const read = (mod) => fs.readFileSync(path.join(__dirname, `../../${mod}/mods/${mod}/syntax.js`), 'utf8');
   assert.equal(read('better-files'), read('better-changes'));
 });
+
+test('font_size scales text and grows rows; scale sizes icons and heights; the defaults change nothing', () => {
+  const context = { theme: () => ({}) };
+  vm.createContext(context);
+  const ui = fs.readFileSync(path.join(root, 'views/ui.js'), 'utf8').replace(/^import\s+[\s\S]*?;$/gm, '').replace(/^export /gm, '');
+  vm.runInContext(`${ui}\nObject.assign(globalThis, { TEXT, iconPx, rowPx, setScale });`, context);
+  const { TEXT, iconPx, rowPx, setScale } = context;
+  const base = { ...TEXT };
+  setScale({ font_size: 13, scale: 1 });
+  assert.deepEqual({ ...TEXT }, base);
+  assert.equal(rowPx(26), 26); assert.equal(iconPx(14), 14);
+  setScale({ font_size: 16.25, scale: 1 });
+  assert.equal(TEXT.body, 16.25); assert.equal(TEXT.caption, base.caption * 1.25);
+  assert.equal(rowPx(26), 33); assert.equal(iconPx(14), 14);
+  setScale({ font_size: 13, scale: 1.25 });
+  assert.deepEqual({ ...TEXT }, base);
+  assert.equal(rowPx(26), 33); assert.equal(iconPx(15), 19); assert.ok(Number.isInteger(rowPx(29)));
+});

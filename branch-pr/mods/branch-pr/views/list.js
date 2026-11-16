@@ -5,6 +5,7 @@ import { theme } from "herdr";
 import { cardChecks, prStatus, repoUrl, timeAgo, who } from "../github/model.js";
 import {
   TEXT,
+  rowPx,
   Busy,
   Button,
   CodeBlock,
@@ -374,7 +375,7 @@ export const listMethods = {
     const t = theme();
     return h_flex()
       .id("pr-footer")
-      .h(34)
+      .h(rowPx(34))
       .flex_none()
       .px(14)
       .gap(8)

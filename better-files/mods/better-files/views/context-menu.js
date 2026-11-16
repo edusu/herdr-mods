@@ -4,7 +4,7 @@ import { v_flex } from "gpui-base";
 import { closeOverlay, props, shared, theme } from "herdr";
 import { foundEditors } from "../actions/outside.js";
 import { agentName } from "../actions/agents.js";
-import { TEXT } from "./ui.js";
+import { TEXT, rowPx } from "./ui.js";
 
 export const contextMenuMethods = {
   menuItems(target) {
@@ -89,7 +89,7 @@ export const contextMenuMethods = {
           div()
             .id(`files-menu-${item.id}`)
             .flex_none()
-            .h(24)
+            .h(rowPx(24))
             .px(8)
             .flex()
             .items_center()

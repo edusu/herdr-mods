@@ -4,7 +4,7 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { theme, run, updates, readTextFile, appHome } from "herdr";
-import { Icon, SIZE } from "./ui.js";
+import { Icon, SIZE, iconPx } from "./ui.js";
 
 export class Footer {
   init(_given, cx) {
@@ -38,7 +38,7 @@ export class Footer {
 
   render() {
     const t = theme();
-    const updateDot = updates().app.ready ? [div().size(6).rounded_full().bg(t.accent)] : [];
+    const updateDot = updates().app.ready ? [div().size(iconPx(6)).rounded_full().bg(t.accent)] : [];
     return h_flex()
       .id("sidebar-footer")
       .size_full()

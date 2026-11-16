@@ -29,7 +29,7 @@ import { checksMethods } from "./views/checks.js";
 import { worktreeViewMethods } from "./views/worktrees.js";
 import { filesMethods } from "./views/files.js";
 import { panelShown, ghProblem, openRequest } from "./github/model.js";
-import { Panel } from "./views/ui.js";
+import { Panel, setScale } from "./views/ui.js";
 
 const CONTEXT_POLL_MS = 1000;
 const REFRESH_INTERVAL_MS = 60000;
@@ -42,6 +42,8 @@ const DEFAULT_SETTINGS = {
   worktrees: { root: "~/.herdr/worktrees", open_with: "terminal" },
   logs: { keep_last: "60KB" },
   tools: { github: "gh" },
+  font_size: 13,
+  scale: 1,
 };
 
 // Each space's last terminal folder and branch.
@@ -140,6 +142,7 @@ class PullRequests extends View {
       const { settings, problems } = await loadSettings("branch-pr", DEFAULT_SETTINGS);
       this.settings = settings;
       this.settingsProblems = problems;
+      setScale(settings);
       // Only while nothing has been chosen yet, by a saved view or a click.
       const untouched =
         !this.viewWasSaved &&

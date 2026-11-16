@@ -11,7 +11,7 @@ import {
   elapsed,
   jobIdOf,
 } from "../github/model.js";
-import { TEXT, Chevron, CodeBlock, GroupHeader, Icon, Message, Row, TextButton } from "./ui.js";
+import { TEXT, rowPx, Chevron, CodeBlock, GroupHeader, Icon, Message, Row, TextButton } from "./ui.js";
 
 export const checksMethods = {
   checkIcon(status, t) {
@@ -124,7 +124,7 @@ export const checksMethods = {
     for (const step of job.steps ?? [])
       content.child(
         h_flex()
-          .h(24)
+          .h(rowPx(24))
           .flex_none()
           .gap(6)
           .items_center()

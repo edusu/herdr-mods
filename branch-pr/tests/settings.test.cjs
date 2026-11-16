@@ -33,3 +33,21 @@ test('loadSettings reports an unreadable mod.json and keeps defaults', async () 
   context.readTextFile = async () => JSON.stringify({ settings: { a: 2 } });
   assert.equal((await context.loadSettings('x', { a: 1 })).settings.a, 2);
 });
+
+test('font_size scales text and grows rows; scale sizes icons and heights; the defaults change nothing', () => {
+  const context = { theme: () => ({}) };
+  vm.createContext(context);
+  const ui = fs.readFileSync(path.join(__dirname, '../mods/branch-pr', 'views/ui.js'), 'utf8').replace(/^import\s+[\s\S]*?;$/gm, '').replace(/^export /gm, '');
+  vm.runInContext(`${ui}\nObject.assign(globalThis, { TEXT, iconPx, rowPx, setScale });`, context);
+  const { TEXT, iconPx, rowPx, setScale } = context;
+  const base = { ...TEXT };
+  setScale({ font_size: 13, scale: 1 });
+  assert.deepEqual({ ...TEXT }, base);
+  assert.equal(rowPx(26), 26); assert.equal(iconPx(14), 14);
+  setScale({ font_size: 16.25, scale: 1 });
+  assert.equal(TEXT.body, 16.25); assert.equal(TEXT.caption, base.caption * 1.25);
+  assert.equal(rowPx(26), 33); assert.equal(iconPx(14), 14);
+  setScale({ font_size: 13, scale: 1.25 });
+  assert.deepEqual({ ...TEXT }, base);
+  assert.equal(rowPx(26), 33); assert.equal(iconPx(15), 19); assert.ok(Number.isInteger(rowPx(29)));
+});

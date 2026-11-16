@@ -5,8 +5,24 @@ import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, Popover, Input, Textarea, TextView } from "gpui-base";
 import { theme, settings } from "herdr";
 
-// Plain px: Herdr scales a mod's sizes by zoom itself.
-export const TEXT = { badge: 10, caption: 11, small: 12, tab: 12.8, body: 13 };
+// Plain px: Herdr scales a mod's sizes by zoom itself. The mod's own font_size and
+// scale settings resize on top of that, through setScale.
+const BASE_TEXT = { badge: 10, caption: 11, small: 12, tab: 12.8, body: 13 };
+export const TEXT = { ...BASE_TEXT };
+let iconScale = 1;
+let rowScale = 1;
+// Icons, icon buttons and other sizes that hold no text, in whole px.
+export const iconPx = (n) => Math.round(n * iconScale);
+// A size that holds text follows the larger of the two settings, so its text always fits.
+export const rowPx = (n) => Math.round(n * rowScale);
+
+// Clamped here too: mod.json is edited by hand, and a 0 would hide the mod.
+export function setScale({ scale, font_size }) {
+  const text = Math.min(24, Math.max(9, font_size)) / BASE_TEXT.body;
+  iconScale = Math.min(1.6, Math.max(0.8, scale));
+  rowScale = Math.max(iconScale, text);
+  for (const key in BASE_TEXT) TEXT[key] = BASE_TEXT[key] * text;
+}
 // One turn of a spinning icon, the speed of Herdr's own spinner.
 export const SPIN_MS = 900;
 
@@ -17,7 +33,7 @@ export const halfTone = (color) => `${color.slice(0, 7)}80`;
 export const codeFont = () => settings().font_family ?? "JetBrains Mono";
 
 export const Icon = (name, size = 14) =>
-  svg(`mods/branch-pr/icons/${name}.svg`).size(size).flex_none();
+  svg(`mods/branch-pr/icons/${name}.svg`).size(iconPx(size)).flex_none();
 
 // A sidebar panel's frame.
 export function Panel({ id }) {
@@ -38,7 +54,7 @@ export function Panel({ id }) {
 
 export function PanelHeader() {
   const t = theme();
-  return h_flex().h(42).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border);
+  return h_flex().h(rowPx(42)).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border);
 }
 
 function Badge(text) {
@@ -69,7 +85,7 @@ export function HeaderTab({
   const t = theme();
   return h_flex()
     .id(id)
-    .h(29)
+    .h(rowPx(29))
     .flex_none()
     .px(10)
     .gap(7)
@@ -102,7 +118,7 @@ export function SubTab({ id, label, count, icon, active, onClick }) {
   const t = theme();
   return h_flex()
     .id(id)
-    .h(32)
+    .h(rowPx(32))
     .flex_none()
     .mb(-1)
     .gap(6)
@@ -133,7 +149,7 @@ export function IconButton({
   const t = theme();
   return div()
     .id(id)
-    .size(small ? 22 : 26)
+    .size(iconPx(small ? 22 : 26))
     .flex_none()
     .flex()
     .items_center()
@@ -159,7 +175,7 @@ export function TextButton({ id, icon, label, onClick, disabled = false, active 
   const t = theme();
   return h_flex()
     .id(id)
-    .h(22)
+    .h(rowPx(22))
     .flex_none()
     .px(6)
     .gap(4)
@@ -187,7 +203,7 @@ export function Button({ id, icon, label, onClick, primary = false, disabled = f
   const solid = primary && !disabled;
   return h_flex()
     .id(id)
-    .h(32)
+    .h(rowPx(32))
     .flex_none()
     .px(14)
     .gap(7)
@@ -213,7 +229,7 @@ export function SmallButton({ id, icon, label, onClick, disabled = false }) {
   const t = theme();
   return h_flex()
     .id(id)
-    .h(26)
+    .h(rowPx(26))
     .flex_none()
     .px(8)
     .gap(5)
@@ -242,7 +258,7 @@ export function MenuButton({ id, label }) {
   const t = theme();
   return h_flex()
     .id(id)
-    .h(26)
+    .h(rowPx(26))
     .flex_none()
     .px(8)
     .gap(5)
@@ -273,14 +289,14 @@ export function GroupHeader({
   const t = theme();
   return h_flex()
     .id(id)
-    .h(30)
+    .h(rowPx(30))
     .flex_none()
     .px(8)
     .gap(6)
     .items_center()
     .text_size(TEXT.caption)
     .text_color(t.muted)
-    .when(divided, (el) => el.mt(6).pt(2).h(34).border_t(1).border_color(t.border))
+    .when(divided, (el) => el.mt(6).pt(2).h(rowPx(34)).border_t(1).border_color(t.border))
     .when(Boolean(onClick), (el) =>
       el
         .cursor_pointer()
@@ -298,7 +314,7 @@ export function GroupHeader({
 export function Chevron(open) {
   const t = theme();
   return div()
-    .w(14)
+    .w(iconPx(14))
     .flex_none()
     .flex()
     .items_center()
@@ -312,7 +328,7 @@ export function Row({ id, onClick }) {
   const t = theme();
   return h_flex()
     .id(id)
-    .h(28)
+    .h(rowPx(28))
     .flex_none()
     .px(8)
     .gap(6)
@@ -434,7 +450,7 @@ export function TextField({ id, state, height = 32 }) {
     .id(id)
     .flex_1()
     .min_w(0)
-    .h(height)
+    .h(rowPx(height))
     .px(10)
     .rounded(8)
     .border_1()
@@ -449,7 +465,7 @@ export function TextBox({ id, state, label, height = 96 }) {
   return Textarea.new(state)
     .id(id)
     .w_full()
-    .h(height)
+    .h(rowPx(height))
     .px(10)
     .py(7)
     .rounded(8)
@@ -507,7 +523,7 @@ export function Select({
     trigger ??
     h_flex()
       .id(`${id}-trigger`)
-      .h(small ? 26 : 32)
+      .h(rowPx(small ? 26 : 32))
       .flex_none()
       .px(small ? 8 : 10)
       .gap(6)
@@ -546,7 +562,7 @@ export function Select({
     v_flex()
       .id(`${id}-option-${choice.id}`)
       .flex_none()
-      .min_h(31)
+      .min_h(rowPx(31))
       .px(8)
       .py(5)
       .gap(1)

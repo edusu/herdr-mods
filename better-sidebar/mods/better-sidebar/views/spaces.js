@@ -20,17 +20,23 @@ import { PRStatusObserver, prPlaceKey, prAppearance } from "../git/pr-status.js"
 import { spaceFolder, checkoutKey, readCheckout } from "../git/checkouts.js";
 import { loadSettings, duration } from "../settings.js";
 import { findNode } from "./find-node.js";
-import { TEXT, Icon, IconButton, Badge, Rail } from "./ui.js";
+import { TEXT, iconPx, rowPx, Icon, IconButton, Badge, Rail } from "./ui.js";
 
 const USUAL_BRANCHES = new Set(["main", "master"]);
-const rowHeight = ({ tree }) => (tree ? 28 : 30);
+const rowHeight = ({ tree }) => rowPx(tree ? 28 : 30);
 
 // Watches and terminal events handle most changes. Poll visible repositories
 // occasionally to catch edits and commits made outside Herdr.
 const GIT_FALLBACK_MS = 15000;
 // Preferences a person may change in the installed mod.json under `settings`.
 // `combined` is read by the lists view: tabs, or spaces above agents.
-const DEFAULT_SETTINGS = { git: { retry_after: "15s" }, pull_request_status: true, combined: true };
+export const DEFAULT_SETTINGS = {
+  git: { retry_after: "15s" },
+  pull_request_status: true,
+  combined: true,
+  font_size: 13,
+  scale: 1,
+};
 
 // What a stored color name looks like on an avatar (the same in every mod
 // that draws space avatars): one strong color per hue, light and dark alike.
@@ -380,7 +386,7 @@ export class Spaces {
   loadingRow(m, t, collapsed) {
     return div()
       .id(`machine-loading-${m ?? "local"}`)
-      .h(28)
+      .h(rowPx(28))
       .flex_none()
       .px(8)
       .text_size(TEXT.small)
@@ -391,7 +397,7 @@ export class Spaces {
   newSpaceRow(m, t, collapsed) {
     return h_flex()
       .id(`machine-new-${m ?? "local"}`)
-      .h(28)
+      .h(rowPx(28))
       .flex_none()
       .px(8)
       .gap(7)
@@ -410,7 +416,7 @@ export class Spaces {
     const connected = !m || machine?.state === "connected";
     const head = h_flex()
       .id(`machine-${m ?? "local"}`)
-      .h(26)
+      .h(rowPx(26))
       .flex_none()
       .px(collapsed ? 2 : 8)
       .gap(7)
@@ -443,7 +449,7 @@ export class Spaces {
       .when(connected, (el) => el.child(this.machineAddButton(m, t)))
       .child(
         div()
-          .size(6)
+          .size(iconPx(6))
           .rounded(3)
           .flex_none()
           .bg(connected ? t.ansi2 : t.dim),
@@ -562,7 +568,7 @@ export class Spaces {
           .items_center()
           .text_color(status.color)
           .tooltip(`${pr.repository}#${pr.number} · ${status.label}\n${pr.title}`)
-          .child(Icon(`${status.icon}`).size(13).flex_none())
+          .child(Icon(`${status.icon}`).size(iconPx(13)).flex_none())
           .when(!compact, (el) => el.child(this.prNumber(w, pr, status))),
       );
     }
@@ -587,7 +593,7 @@ export class Spaces {
     const status = this.checkoutStatus(w);
     return h_flex()
       .id(`space-pr-line-${w.id}`)
-      .h(20)
+      .h(rowPx(20))
       .pl(tree ? 44 : 27)
       .items_center()
       .tooltip(`PR refresh failed: ${status.error}`)
@@ -609,7 +615,7 @@ export class Spaces {
       .relative()
       .id(`space-${w.id}`)
       .px(8)
-      .h(rowHeight({ tree }) + (hasPRLine ? 22 : 0))
+      .h(rowHeight({ tree }) + (hasPRLine ? rowPx(22) : 0))
       .flex_none()
       .justify_center()
       .rounded(8)
@@ -683,7 +689,7 @@ export class Spaces {
     const color = (shared("space.colors") ?? {})[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (AVATAR_COLORS[color] ?? t[color]);
     return h_flex()
-      .size(18)
+      .size(rowPx(18))
       .flex_none()
       .rounded(5)
       .bg(fill)
@@ -699,7 +705,7 @@ export class Spaces {
     const badge = this.prBadge(w, t, true);
     return h_flex()
       .id(`space-${w.id}`)
-      .h(26)
+      .h(rowPx(26))
       .flex_none()
       .justify_center()
       .gap(4)
@@ -770,7 +776,7 @@ export class Spaces {
 
   header(t, collapsed) {
     return h_flex()
-      .h(31)
+      .h(rowPx(31))
       .pl(16)
       .pr(10)
       .items_center()

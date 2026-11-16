@@ -2,7 +2,9 @@
 // panel toggle. A layout puts one copy per block, and `view` in its props picks which part.
 import { View } from "gpui-kit";
 import { props } from "herdr";
-import { Spaces } from "./views/spaces.js";
+import { loadSettings } from "./settings.js";
+import { setScale } from "./views/ui.js";
+import { Spaces, DEFAULT_SETTINGS } from "./views/spaces.js";
 import { Agents } from "./views/agents.js";
 import { Lists } from "./views/lists.js";
 import { Footer } from "./views/footer.js";
@@ -15,6 +17,11 @@ export default class BetterSidebar extends View {
     const Part = PARTS[props()?.view] ?? Spaces;
     this.part = new Part();
     this.part.init(given, cx);
+    // Every part, not just Spaces, which reads the rest of the settings.
+    cx.spawn(async (cx) => {
+      setScale((await loadSettings("better-sidebar", DEFAULT_SETTINGS)).settings);
+      cx.notify();
+    });
   }
 
   render(cx) {

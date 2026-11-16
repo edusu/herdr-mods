@@ -13,6 +13,7 @@ import {
 import { agentName } from "../actions/agents.js";
 import {
   TEXT,
+  rowPx,
   Button,
   Chevron,
   CodeBlock,
@@ -222,7 +223,7 @@ export const conversationMethods = {
         .child(
           h_flex()
             .id(`pr-entry-toggle-${entry.id}`)
-            .h(32)
+            .h(rowPx(32))
             .px(8)
             .gap(6)
             .min_w(0)
