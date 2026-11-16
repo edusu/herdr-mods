@@ -100,10 +100,14 @@ class PullRequests extends View {
     this.tab = DEFAULT_SETTINGS.list.default.tab;
     this.state = DEFAULT_SETTINGS.list.default.state;
     this.applySettings(cx);
-    // shortcut: checked once, so installing Better Changes takes effect after the next reload.
+    // shortcut: checked once, so installing Better Changes or Walkthrough takes effect after the next reload.
     this.hasBetterChanges = false;
     readTextFile(`${appHome()}/mods/better-changes/mod.json`)
       .then((raw) => (this.hasBetterChanges = raw !== null))
+      .catch(() => {});
+    this.hasWalkthrough = false;
+    readTextFile(`${appHome()}/mods/walkthrough/mod.json`)
+      .then((raw) => (this.hasWalkthrough = raw !== null))
       .catch(() => {});
     this.search = InputState.new({ placeholder: "Search · #482, text, author:login" });
     this.search.on("change", (_e, cx) => {

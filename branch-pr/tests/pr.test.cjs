@@ -48,6 +48,7 @@ function harness({ storage = new Map(), exec, hc, known = [] } = {}) {
     exec: exec ?? (async () => ({ code: 1, stdout: '', stderr: '' })),
     hc: hc ?? (async (args) => { sent.push(args); return { code: 0, stdout: '', stderr: '' }; }),
     run: (name, args) => ran.push([name, args]),
+    openOverlay: (spec) => ran.push(['overlay', spec]),
     shared: (k) => live.shared[k], setShared: (k, v) => { live.shared[k] = v; },
     home: () => '/home/sam', appHome: () => '/app', theme: () => new Proxy({}, { get: (_t, k) => String(k) }),
     layout: () => live.layout, settings: () => ({ font_family: 'Code' }), readTextFile: async () => null,
@@ -469,6 +470,27 @@ test('every action is in the header menu, Close set apart, and none on a merged 
   for (const id of ['squash', 'merge', 'close']) assert.ok(find(tree, `pr-actions-option-${id}`));
   h.mod.pr = PR({ state: 'MERGED' });
   assert.equal(find(h.mod.render(), 'pr-actions'), undefined);
+});
+
+test('an open PR opens the walkthrough on itself, in its worktree when it has one', () => {
+  const h = harness();
+  h.mod.pr = PR();
+  assert.equal(find(h.mod.render(), 'pr-walkthrough'), undefined, 'not installed');
+  h.mod.hasWalkthrough = true;
+  click(h.mod.render(), 'pr-walkthrough', h);
+  h.mod.worktrees = { key: 'owner/repo#2', list: [{ path: '/wt/PR-2', branch: 'fix', name: 'PR-2' }] };
+  click(h.mod.render(), 'pr-walkthrough', h);
+  same(h.ran, [
+    ['overlay', { mod: 'walkthrough', kind: 'dialog', modal: true, width: 0.74, height: 0.8, props: { folder: '/repo', scope: 'pr', pr: 2 } }],
+    ['overlay', { mod: 'walkthrough', kind: 'dialog', modal: true, width: 0.74, height: 0.8, props: { folder: '/wt/PR-2', scope: 'pr', pr: 2 } }],
+  ]);
+  h.mod.pr = PR({ state: 'MERGED' });
+  assert.equal(find(h.mod.render(), 'pr-walkthrough'), undefined, 'merged');
+  h.mod.pr = PR({ state: 'CLOSED' });
+  assert.equal(find(h.mod.render(), 'pr-walkthrough'), undefined, 'closed');
+  h.mod.pr = PR();
+  h.mod.sp = { id: 'space', folder: '/repo', machine: 'box' };
+  assert.equal(find(h.mod.render(), 'pr-walkthrough'), undefined, 'remote');
 });
 
 test('merging past something in the way says what, before you confirm', () => {

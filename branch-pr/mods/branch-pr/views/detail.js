@@ -1,7 +1,7 @@
 // A PR: its tabs, what stands in the way of merging it, and the Overview tab.
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { theme } from "herdr";
+import { theme, openOverlay } from "herdr";
 import {
   REVIEW_STATES,
   STATE_CHANGES,
@@ -30,6 +30,7 @@ import {
   Message,
   PanelHeader,
   Row,
+  SmallButton,
   TextBox,
 } from "./ui.js";
 
@@ -119,6 +120,7 @@ export const detailMethods = {
   about(pr) {
     const t = theme();
     const actions = this.actionsMenu(pr);
+    const walkthrough = this.walkthroughButton(pr);
     return v_flex()
       .id("pr-about")
       .flex_none()
@@ -167,6 +169,7 @@ export const detailMethods = {
               .tooltip(`${pr.headRefName} → ${pr.baseRefName}`)
               .child(`${who(pr)} · ${pr.headRefName} → ${pr.baseRefName}`),
           )
+          .when(Boolean(walkthrough), (el) => el.child(walkthrough))
           .when(Boolean(actions), (el) => el.child(actions))
           .when(pr.state === "MERGED", (el) => el.child(this.mergedBadge(t))),
       )
@@ -287,6 +290,24 @@ export const detailMethods = {
         divided: i > 0 && (id === "close" || id === "reopen"),
       })),
       onChoose: (id, cx) => this.askStateChange(id, cx),
+    });
+  },
+
+  // The walkthrough lists open PRs only, and runs Git on this computer.
+  walkthroughButton(pr) {
+    if (!this.hasWalkthrough || pr.state !== "OPEN" || this.sp?.machine) return null;
+    return SmallButton({
+      id: "pr-walkthrough",
+      label: "Walkthrough",
+      onClick: () =>
+        openOverlay({
+          mod: "walkthrough",
+          kind: "dialog",
+          modal: true,
+          width: 0.74,
+          height: 0.8,
+          props: { folder: this.workFolder(), scope: "pr", pr: pr.number },
+        }),
     });
   },
 
