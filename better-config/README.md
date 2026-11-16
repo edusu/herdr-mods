@@ -43,9 +43,10 @@ Better Config also keeps a copy of only what you changed in `~/.config/herdr-app
 A profile is a whole set of settings: Herdr's and every mod's. One is in place at a time, picked from **Profile** at the top of the sidebar, and every change you make, here or anywhere else (Herdr's zoom keys, a hand edit), is saved into it.
 
 - **Pick** another profile and every setting becomes that profile's: what it holds, and the default for the rest.
-- **New** starts a profile from every default. The first time, your current values are kept first as **Default**, so none are lost.
+- **New** starts a profile from every default.
 - **Clone** copies the profile in place under a new name, to change from there.
-- **Rename** and **Delete** act on the profile in place. Deleting leaves the settings as they are, with no profile following them.
+- **Rename** and **Delete** act on the profile in place. After a delete, **Default** (or the first profile left) takes its place.
+- With no profile in place, as on a machine that got the profiles but never picked one, the values you have are kept as **Default** before another profile is put in place, unless a profile already holds them.
 
 Each profile is a file, `~/.config/herdr-app/data/better-config/profiles/<name>.json`, holding only values that differ from the defaults:
 

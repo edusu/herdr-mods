@@ -71,10 +71,10 @@ export default class BetterConfig extends View {
   }
 
   // The folder used to be ~/.config/herdr-mods/better-config. Herdr makes the new one for the mod's own
-  // data, so the old files move into it, over any copy written before they did.
+  // data, so the old files move into it. One already there wins: chezmoi may have brought a newer copy.
   async moveOldFolder() {
     const script =
-      '[ -d "$1" ] || exit 0; mkdir -p "$2" && for f in "$1"/*; do [ -e "$f" ] && mv -f "$f" "$2/"; done; rmdir "$1" "$(dirname "$1")" 2>/dev/null; true';
+      '[ -d "$1" ] || exit 0; mkdir -p "$2" && for f in "$1"/*; do [ -e "$f" ] && mv -n "$f" "$2/"; done; rmdir "$1" "$(dirname "$1")" 2>/dev/null; true';
     await exec("/bin/sh", ["-c", script, "sh", `${home()}/.config/herdr-mods/better-config`, this.keptFolder()]);
   }
 
@@ -227,11 +227,13 @@ export default class BetterConfig extends View {
 
   // Sets every setting to the profile's: what it holds, and the default for the rest.
   // Keys no schema describes (Herdr's theme, sounds, ...) aren't a profile's and stay.
-  switchTo(name, cx) {
+  // With no profile in place, the values now are kept first as "Default", unless a profile already holds them.
+  switchTo(name, cx, keepLoose = true) {
     if (name === this.active || this.switching) return;
     this.switching = true;
     cx.spawn(async (cx) => {
       try {
+        if (!this.active && keepLoose) await this.keepLoose();
         const entry = this.profiles.find((p) => p.name === name);
         if (entry)
           for (const mod of this.mods) {
@@ -249,13 +251,17 @@ export default class BetterConfig extends View {
     });
   }
 
-  // A new profile starts from every default. The first one keeps today's values as "Default", so none are lost.
+  async keepLoose() {
+    const snapshots = this.snapshots();
+    const values = mirrorProfile({ values: {} }, snapshots).values;
+    if (!Object.keys(values).length) return;
+    if (this.profiles.some((p) => equal(mirrorProfile(p.profile, snapshots), p.profile))) return;
+    await this.createProfile(this.freeName("Default"), values);
+  }
+
+  // A new profile starts from every default.
   newProfile(cx) {
     cx.spawn(async (cx) => {
-      if (!this.profiles.length) {
-        const kept = await this.createProfile("Default", this.snapshots());
-        if (kept) await this.setActive(kept.name);
-      }
       const entry = await this.createProfile(this.freeName("New profile"), {});
       if (entry) this.switchTo(entry.name, cx);
       cx.notify();
@@ -298,15 +304,19 @@ export default class BetterConfig extends View {
     cx.notify();
   }
 
-  // The settings stay as they are; nothing follows a profile until one is picked again.
+  // Another profile takes its place, so no values are left that no profile holds. With none left,
+  // the settings stay as they are.
   deleteProfile(cx) {
     const entry = this.profiles.find((p) => p.name === this.active);
     this.confirmDelete = false;
     if (!entry) return;
     cx.spawn(async (cx) => {
       await exec("rm", ["-f", "--", entry.path]);
+      this.profiles = this.profiles.filter((p) => p !== entry);
       await this.setActive(null);
-      await this.load();
+      const next = this.profiles.find((p) => p.name === "Default") ?? this.profiles[0];
+      if (next) this.switchTo(next.name, cx, false);
+      else await this.load();
       cx.notify();
     });
   }
