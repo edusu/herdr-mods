@@ -160,6 +160,33 @@ test("this repository's mods ship a schema their mod.json passes, with their cod
   }
 });
 
+test("Herdr's own settings are described like a mod's, and edited in place", async () => {
+  const { APP_SCHEMA, fieldsOf, problemWith, editSettingsFile } = await load();
+  const fields = fieldsOf(APP_SCHEMA, { zoom: 1.2, theme: "graphite" });
+  for (const f of fields.filter((f) => f.described)) {
+    assert.ok(f.title && f.description, `${f.key} needs a title and description`);
+    assert.equal(problemWith(f, f.default), null, `${f.key}'s default doesn't fit its type`);
+  }
+  assert.equal(fields.find((f) => f.key === "theme").described, false);
+  const zoom = fields.find((f) => f.key === "zoom");
+  const raw = JSON.stringify({ zoom: 1.2, sounds: { enabled: true } });
+  assert.deepEqual(JSON.parse(editSettingsFile(raw, zoom, 1.5)), { zoom: 1.5, sounds: { enabled: true } });
+  assert.deepEqual(JSON.parse(editSettingsFile(raw, zoom, 1)), { sounds: { enabled: true } });
+  assert.deepEqual(JSON.parse(editSettingsFile(null, zoom, 2)), { zoom: 2 });
+});
+
+test("a profile holds chosen values and knows which differ from now", async () => {
+  const { withValue, profileEntries, profileDiff, validProfileName } = await load();
+  let p = withValue({}, "@herdr", "zoom", 1.5);
+  p = withValue(p, "notion-notes", "parents", ["abc"]);
+  assert.deepEqual(profileEntries(p), [["@herdr", "zoom", 1.5], ["notion-notes", "parents", ["abc"]]]);
+  const now = { "@herdr": { zoom: 1.5 }, "notion-notes": { parents: ["xyz"] } };
+  assert.deepEqual(profileDiff(p, (mod, key) => now[mod]?.[key]), [["notion-notes", "parents", ["abc"]]]);
+  assert.deepEqual(withValue(withValue(p, "notion-notes", "parents", undefined), "@herdr", "zoom", undefined).values, {});
+  assert.ok(validProfileName("Monitor 4K"));
+  for (const bad of ["", ".hidden", "a/b", " pad", "x".repeat(61)]) assert.ok(!validProfileName(bad), bad);
+});
+
 test("a step lands on the step's decimals and inside the limits", async () => {
   const { stepValue } = await load();
   const field = { step: 0.05, min: 0.8, max: 1.6 };

@@ -222,13 +222,88 @@ export function lostValues(kept, fields, manifest) {
   return lost;
 }
 
+function editSettings(settings, field, value) {
+  if (value === undefined || equal(value, field.default)) deletePath(settings, field.key);
+  else setPath(settings, field.key, value);
+}
+
 // The manifest's text with one setting changed. Undefined, or the default, removes it,
 // and an empty settings block goes too.
 export function editManifest(raw, field, value) {
   const manifest = JSON.parse(raw);
   if (!isObject(manifest.settings)) manifest.settings = {};
-  if (value === undefined || equal(value, field.default)) deletePath(manifest.settings, field.key);
-  else setPath(manifest.settings, field.key, value);
+  editSettings(manifest.settings, field, value);
   if (!Object.keys(manifest.settings).length) delete manifest.settings;
   return `${JSON.stringify(manifest, null, 2)}\n`;
+}
+
+// Herdr's settings.json with one setting changed: the same, on a file that is all settings.
+export function editSettingsFile(raw, field, value) {
+  const settings = JSON.parse(raw ?? "{}");
+  editSettings(settings, field, value);
+  return `${JSON.stringify(settings, null, 2)}\n`;
+}
+
+// Herdr's own settings.json, described the way a mod describes its settings. Only keys with
+// a known default; the others in the file still show, with their type guessed.
+const appSetting = (title, description, extra) => ({ title, description, ...extra });
+const scale = (title, description, min, max, step) =>
+  appSetting(title, description, { type: "number", minimum: min, maximum: max, "x-step": step, default: 1 });
+export const APP_SCHEMA = {
+  properties: {
+    settings: {
+      type: "object",
+      properties: {
+        zoom: scale("Zoom", "Scales the whole app: terminals, mods and the layout's sizes.", 0.5, 3, 0.1),
+        font: appSetting("Terminal font", "The terminals' font, where the layout sets none.", { type: "string", default: "JetBrains Mono" }),
+        font_size: appSetting("Terminal font size", "The terminals' text size at zoom 1, where the layout sets none.", { type: "number", minimum: 6, maximum: 40, "x-step": 0.5, "x-unit": "px", default: 14 }),
+        ui_font: appSetting("Mod font", "The mods' font, where the layout sets none.", { type: "string", default: "Geist" }),
+        font_ligatures: appSetting("Ligatures", "Programming ligatures in terminal fonts that have them.", { type: "boolean", default: false }),
+        terminal_line_height: scale("Line height", "Terminal row height, as a multiple.", 0.8, 2, 0.05),
+        terminal_cell_width: scale("Cell width", "Terminal column width, as a multiple.", 0.8, 2, 0.05),
+        terminal_scroll_speed: scale("Scroll speed", "Wheel and trackpad speed in terminals, as a multiple.", 0.1, 5, 0.1),
+        minimum_contrast: scale("Minimum contrast", "Terminal text below this contrast ratio turns near-white or near-black. 1 leaves colors alone.", 1, 21, 0.1),
+        pane_scrollbars: appSetting("Pane scrollbars", "Show a scrollbar on terminal scrollback.", { type: "boolean", default: true }),
+        option_as_alt: appSetting("Option as Alt", "Which Option keys act as Alt in terminals (macOS).", {
+          type: "string",
+          enum: ["auto", "on", "off", "left", "right"],
+          "x-labels": { auto: "Auto", on: "Both", off: "Neither", left: "Left", right: "Right" },
+          default: "auto",
+        }),
+      },
+    },
+  },
+};
+
+// Profiles -----------------------------------------------------------------
+// A profile is a file of chosen values, { values: { "<mod>": { "<key>": value } } }, and
+// applying it sets only those. Several can hold different keys and be applied together.
+
+// A name that is safe as a file name in the profiles folder.
+export function validProfileName(name) {
+  return typeof name === "string" && name.length <= 60 && /^[^./\\][^/\\]*$/.test(name) && name.trim() === name;
+}
+
+// The profile with one value set, or removed when value is undefined.
+export function withValue(profile, mod, key, value) {
+  const values = structuredClone(isObject(profile?.values) ? profile.values : {});
+  if (value === undefined) {
+    if (isObject(values[mod])) delete values[mod][key];
+    if (isObject(values[mod]) && !Object.keys(values[mod]).length) delete values[mod];
+  } else (values[mod] = isObject(values[mod]) ? values[mod] : {})[key] = value;
+  return { ...profile, values };
+}
+
+// The profile's values, as [mod, key, value].
+export function profileEntries(profile) {
+  const out = [];
+  for (const [mod, values] of Object.entries(isObject(profile?.values) ? profile.values : {}))
+    for (const [key, value] of Object.entries(isObject(values) ? values : {})) out.push([mod, key, value]);
+  return out;
+}
+
+// The entries applying the profile would change. now(mod, key) is the value as it stands,
+// its default included, or undefined.
+export function profileDiff(profile, now) {
+  return profileEntries(profile).filter(([mod, key, value]) => !equal(now(mod, key), value));
 }

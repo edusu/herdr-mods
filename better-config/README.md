@@ -10,6 +10,8 @@ Every installed mod's settings in one dialog for [Herdr Desktop](https://herdr.d
 - **Applies at once:** a change is saved to the mod's own `mod.json`, and Herdr reloads the mod straight away.
 - **See what you changed:** a dot marks every setting you've changed. **Reset** puts one back, and **Reset all** puts a whole mod back.
 - **Survives updates:** updating a mod replaces its `mod.json`, which used to throw your settings away. Better Config keeps a copy of what you changed, notices when an update put the defaults back, and lists each one, yours beside the current value, with a tick to choose which to restore and which to keep as they are now.
+- **Herdr's own settings too:** a **Herdr** page edits zoom, terminal font and size, line height, cell width and the rest of `settings.json`, which Herdr applies at once.
+- **Profiles:** save chosen values, from any mod and from Herdr, as a named profile, and apply it in one click. Handy for a monitor's zoom and sizes, or a mod's target such as Notion Notes' parent page.
 - **Works with any mod:** a mod that ships a schema of its settings (below) gets names, descriptions and checks. Any other mod with a `settings` block still shows, with its types guessed.
 
 ## Install
@@ -35,6 +37,20 @@ Herdr stops adding new default shortcuts to a `keys.json` you've edited, so if y
 Values stay where each mod already reads them: the `settings` block of its installed `mod.json`, which holds only what you changed. A change back to the default removes the key. Nothing about a mod changes, and a mod works the same with or without Better Config.
 
 Better Config also keeps a copy of only what you changed in `~/.config/herdr-mods/better-config/<mod>.json`, outside every mod's folder. When a kept value is missing from `mod.json`, or is back at its default, it asks whether to restore it. A value you changed by hand to something else is taken as yours, and the copy follows it. Every write goes through only if the file hasn't changed since it was read, so it never overwrites an edit made meanwhile.
+
+## Profiles
+
+**+ New profile** in the sidebar makes one; type its name at the top of its page. Under every setting, each profile has a chip: click it to put the value you have now into that profile. A filled chip means the profile holds the value you have now; an outlined chip with a dot means it holds another one, and a click takes the current value. Clicking a filled chip takes the setting out of the profile.
+
+A profile's page lists what it holds, beside the value now where they differ, and **Apply** sets those values. Settings a profile doesn't hold stay as they are, so profiles holding different settings (one for a monitor's sizes, one for where notes go) can be applied together; the last one applied wins where two overlap. A tick in the sidebar marks a profile whose every value is in place.
+
+Each profile is a file, `~/.config/herdr-mods/better-config/profiles/<name>.json`:
+
+```json
+{ "values": { "@herdr": { "zoom": 1.25 }, "notion-notes": { "font_size": 15 } } }
+```
+
+`@herdr` is Herdr's own `settings.json`. Values for a mod that isn't installed are kept and skipped.
 
 ## Describe a mod's settings
 
