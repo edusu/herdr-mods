@@ -276,34 +276,33 @@ export const APP_SCHEMA = {
 };
 
 // Profiles -----------------------------------------------------------------
-// A profile is a file of chosen values, { values: { "<mod>": { "<key>": value } } }, and
-// applying it sets only those. Several can hold different keys and be applied together.
+// A profile is a whole set of settings, { values: { "<mod>": { "<key>": value } } }, holding
+// each mod's changed values as Better Config's kept copy does. One is in place at a time.
 
 // A name that is safe as a file name in the profiles folder.
 export function validProfileName(name) {
   return typeof name === "string" && name.length <= 60 && /^[^./\\][^/\\]*$/.test(name) && name.trim() === name;
 }
 
-// The profile with one value set, or removed when value is undefined.
-export function withValue(profile, mod, key, value) {
-  const values = structuredClone(isObject(profile?.values) ? profile.values : {});
-  if (value === undefined) {
-    if (isObject(values[mod])) delete values[mod][key];
-    if (isObject(values[mod]) && !Object.keys(values[mod]).length) delete values[mod];
-  } else (values[mod] = isObject(values[mod]) ? values[mod] : {})[key] = value;
-  return { ...profile, values };
-}
-
-// The profile's values, as [mod, key, value].
-export function profileEntries(profile) {
+// What setting a mod to a profile's values takes: [key, value] for each described setting
+// that differs now. One the profile doesn't hold goes back to its default.
+export function profileEdits(fields, settings, wanted) {
   const out = [];
-  for (const [mod, values] of Object.entries(isObject(profile?.values) ? profile.values : {}))
-    for (const [key, value] of Object.entries(isObject(values) ? values : {})) out.push([mod, key, value]);
+  for (const field of fields) {
+    if (field.default === undefined) continue;
+    const target = isObject(wanted) && field.key in wanted ? wanted[field.key] : field.default;
+    const now = getPath(settings, field.key) ?? field.default;
+    if (!equal(now, target)) out.push([field.key, target]);
+  }
   return out;
 }
 
-// The entries applying the profile would change. now(mod, key) is the value as it stands,
-// its default included, or undefined.
-export function profileDiff(profile, now) {
-  return profileEntries(profile).filter(([mod, key, value]) => !equal(now(mod, key), value));
+// The profile with each given mod's values as they are now. Mods not given (not installed)
+// keep what the profile holds.
+export function mirrorProfile(profile, snapshots) {
+  const values = { ...(isObject(profile?.values) ? profile.values : {}) };
+  for (const [mod, snapshot] of Object.entries(snapshots))
+    if (Object.keys(snapshot).length) values[mod] = snapshot;
+    else delete values[mod];
+  return { ...profile, values };
 }

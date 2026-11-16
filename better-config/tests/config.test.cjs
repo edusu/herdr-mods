@@ -175,14 +175,14 @@ test("Herdr's own settings are described like a mod's, and edited in place", asy
   assert.deepEqual(JSON.parse(editSettingsFile(null, zoom, 2)), { zoom: 2 });
 });
 
-test("a profile holds chosen values and knows which differ from now", async () => {
-  const { withValue, profileEntries, profileDiff, validProfileName } = await load();
-  let p = withValue({}, "@herdr", "zoom", 1.5);
-  p = withValue(p, "notion-notes", "parents", ["abc"]);
-  assert.deepEqual(profileEntries(p), [["@herdr", "zoom", 1.5], ["notion-notes", "parents", ["abc"]]]);
-  const now = { "@herdr": { zoom: 1.5 }, "notion-notes": { parents: ["xyz"] } };
-  assert.deepEqual(profileDiff(p, (mod, key) => now[mod]?.[key]), [["notion-notes", "parents", ["abc"]]]);
-  assert.deepEqual(withValue(withValue(p, "notion-notes", "parents", undefined), "@herdr", "zoom", undefined).values, {});
+test("a profile is a whole set: switching sets what it holds and defaults the rest", async () => {
+  const { fieldsOf, profileEdits, mirrorProfile, validProfileName } = await load();
+  const fields = fieldsOf(schema, {});
+  const settings = { refresh: { tree: "30s" }, gutter: false };
+  assert.deepEqual(profileEdits(fields, settings, { "limits.files": 50, gutter: false }), [["refresh.tree", "10s"], ["limits.files", 50]]);
+  assert.deepEqual(profileEdits(fields, settings, { "refresh.tree": "30s", gutter: false }), []);
+  const p = { values: { gone: { a: 1 }, kept: { b: 2 } } };
+  assert.deepEqual(mirrorProfile(p, { kept: {}, fresh: { c: 3 } }).values, { gone: { a: 1 }, fresh: { c: 3 } });
   assert.ok(validProfileName("Monitor 4K"));
   for (const bad of ["", ".hidden", "a/b", " pad", "x".repeat(61)]) assert.ok(!validProfileName(bad), bad);
 });

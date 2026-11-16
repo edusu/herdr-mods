@@ -22,16 +22,14 @@ import {
   stepValue,
   APP_SCHEMA,
   validProfileName,
-  withValue,
-  profileEntries,
-  profileDiff,
+  profileEdits,
+  mirrorProfile,
 } from "./model.js";
 
 const I = (name) => `mods/better-config/icons/${name}.svg`;
 const POLL_MS = 3000;
 // Herdr's own settings.json shows as one more page, under a name no mod folder can have.
 const APP = "@herdr";
-const PROFILE = "profile:";
 
 export default class BetterConfig extends View {
   init(_props, cx) {
@@ -48,7 +46,13 @@ export default class BetterConfig extends View {
     this.openMenu = null; // the dropdown that's open
     this.menuIndex = 0;
     this.profiles = []; // { name, path, raw, profile }
-    this.confirmDelete = null;
+    this.active = null; // the profile in place, which follows every change
+    this.switching = false;
+    this.renaming = false;
+    this.confirmDelete = false;
+    this.nameBox = InputState.new({ placeholder: "Profile name" });
+    this.nameBox.on("blur", (_e, cx) => this.finishRename(cx));
+    this.nameBox.on("submit", (_e, cx) => this.finishRename(cx));
     cx.spawn(async (cx) => {
       await this.load();
       cx.notify();
@@ -104,15 +108,17 @@ export default class BetterConfig extends View {
     }
     mods.sort((a, b) => (a.app ? -1 : b.app ? 1 : this.titleOf(a).localeCompare(this.titleOf(b))));
     const profiles = await this.loadProfiles();
-    const state = (ms, ps) => JSON.stringify([ms.map((m) => [m.name, m.raw, m.keptRaw]), ps.map((p) => [p.name, p.raw])]);
-    const before = state(this.mods, this.profiles);
+    const active = (await readTextFile(this.activeFile()))?.trim() || null;
+    const state = (ms, ps, a) => JSON.stringify([ms.map((m) => [m.name, m.raw, m.keptRaw]), ps.map((p) => [p.name, p.raw]), a]);
+    const before = state(this.mods, this.profiles, this.active);
     this.mods = mods;
     this.profiles = profiles;
+    if (!this.switching) this.active = profiles.some((p) => p.name === active) ? active : null;
+    await this.follow();
     this.loaded = true;
-    const known = mods.some((m) => m.name === this.section) || profiles.some((p) => PROFILE + p.name === this.section);
-    if (!known) this.section = mods[0]?.name ?? null;
+    if (!mods.some((m) => m.name === this.section)) this.section = mods[0]?.name ?? null;
     this.makeInputs();
-    return before !== state(mods, profiles);
+    return before !== state(mods, profiles, this.active);
   }
 
   // settings.json as a page like a mod's, described by Better Config's own schema.
@@ -134,6 +140,10 @@ export default class BetterConfig extends View {
     return `${this.keptFolder()}/profiles`;
   }
 
+  activeFile() {
+    return `${this.keptFolder()}/active-profile`;
+  }
+
   async loadProfiles() {
     const listing = await exec("/bin/sh", ["-c", 'cd "$1" 2>/dev/null && ls -1 -- *.json 2>/dev/null', "sh", this.profilesFolder()]);
     const profiles = [];
@@ -151,55 +161,127 @@ export default class BetterConfig extends View {
     return profiles.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // A setting's value as it stands, its default included; undefined when the mod isn't installed.
-  valueNow(modName, key) {
-    const mod = this.mods.find((m) => m.name === modName);
-    if (!mod?.manifest) return undefined;
-    return getPath(mod.manifest.settings, key) ?? mod.fields.find((f) => f.key === key)?.default;
+  // Each installed mod's changed values, as a profile holds them. A mod whose values an
+  // update took is left out, so the profile keeps them until the person decides.
+  snapshots() {
+    const out = {};
+    for (const mod of this.mods)
+      if (mod.manifest && !mod.error && !Object.keys(mod.lost).length) out[mod.name] = changedValues(mod.fields, mod.manifest.settings);
+    return out;
   }
 
-  installed(modName) {
-    return this.mods.some((m) => m.name === modName && m.manifest);
+  // The active profile follows every change, whoever made it: Better Config, Herdr's zoom keys, a hand edit.
+  async follow() {
+    const entry = this.profiles.find((p) => p.name === this.active);
+    if (!entry || this.switching) return;
+    const next = mirrorProfile(entry.profile, this.snapshots());
+    if (!equal(next, entry.profile)) await this.writeProfile(entry, next);
   }
 
-  // What applying would still change, among installed mods. Empty: the profile is in place.
-  pending(entry) {
-    return profileDiff(entry.profile, (m, k) => this.valueNow(m, k)).filter(([m]) => this.installed(m));
+  async writeProfile(entry, profile) {
+    const text = `${JSON.stringify(profile, null, 2)}\n`;
+    try {
+      await exec("mkdir", ["-p", this.profilesFolder()]);
+      await writeTextFile(entry.path, text, entry.raw);
+      entry.raw = text;
+      entry.profile = profile;
+      delete this.notes.profile;
+      return true;
+    } catch (e) {
+      this.notes.profile = `Couldn't save profile ${entry.name}: ${e?.message ?? e}`;
+      return false;
+    }
   }
 
-  // Writes a profile only if nobody changed it meanwhile; a new one only if the name is free.
-  saveProfile(entry, profile, cx) {
+  async setActive(name) {
+    try {
+      await exec("mkdir", ["-p", this.keptFolder()]);
+      await writeTextFile(this.activeFile(), name ? `${name}\n` : "", await readTextFile(this.activeFile()));
+      this.active = name;
+    } catch (e) {
+      this.notes.profile = `Couldn't switch profile: ${e?.message ?? e}`;
+    }
+  }
+
+  freeName(base) {
+    let name = base;
+    for (let n = 2; this.profiles.some((p) => p.name === name); n++) name = `${base} ${n}`;
+    return name;
+  }
+
+  async createProfile(name, values) {
+    const entry = { name, path: `${this.profilesFolder()}/${name}.json`, raw: null, profile: { values: {} } };
+    if (!(await this.writeProfile(entry, { values }))) return null;
+    this.profiles.push(entry);
+    return entry;
+  }
+
+  // Sets every setting to the profile's: what it holds, and the default for the rest.
+  // Keys no schema describes (Herdr's theme, sounds, ...) aren't a profile's and stay.
+  switchTo(name, cx) {
+    if (name === this.active || this.switching) return;
+    this.switching = true;
     cx.spawn(async (cx) => {
       try {
-        await exec("mkdir", ["-p", this.profilesFolder()]);
-        await writeTextFile(entry.path, `${JSON.stringify(profile, null, 2)}\n`, entry.raw);
-        delete this.notes[`${PROFILE}${entry.name}`];
-      } catch (e) {
-        this.notes[`${PROFILE}${entry.name}`] = `Couldn't save the profile: ${e?.message ?? e}`;
+        const entry = this.profiles.find((p) => p.name === name);
+        if (entry)
+          for (const mod of this.mods) {
+            if (!mod.manifest || mod.error) continue;
+            const edits = profileEdits(mod.fields, mod.manifest.settings, entry.profile?.values?.[mod.name]);
+            const failed = edits.length ? await this.write(mod.name, edits) : null;
+            if (failed) this.notes[`${mod.name}:*`] = `Couldn't save: ${failed}`;
+          }
+        await this.setActive(entry ? name : null);
+      } finally {
+        this.switching = false;
       }
       await this.load();
       cx.notify();
     });
   }
 
+  // A new profile starts from every default. The first one keeps today's values as "Default", so none are lost.
   newProfile(cx) {
-    let n = this.profiles.length + 1;
-    while (this.profiles.some((p) => p.name === `Profile ${n}`)) n++;
-    const name = `Profile ${n}`;
-    this.section = PROFILE + name;
-    this.saveProfile({ name, path: `${this.profilesFolder()}/${name}.json`, raw: null }, { values: {} }, cx);
+    cx.spawn(async (cx) => {
+      if (!this.profiles.length) {
+        const kept = await this.createProfile("Default", this.snapshots());
+        if (kept) await this.setActive(kept.name);
+      }
+      const entry = await this.createProfile(this.freeName("New profile"), {});
+      if (entry) this.switchTo(entry.name, cx);
+      cx.notify();
+    });
   }
 
-  renameProfile(entry, name, cx) {
-    const id = `${PROFILE}${entry.name}`;
-    if (name === entry.name) return;
-    if (!validProfileName(name)) this.notes[id] = "A name can't be empty, start with a dot or have a slash.";
-    else if (this.profiles.some((p) => p.name === name)) this.notes[id] = `There's already a profile called ${name}.`;
+  // A copy of the values in place now, as a new profile, which becomes the active one.
+  cloneProfile(cx) {
+    cx.spawn(async (cx) => {
+      const entry = await this.createProfile(this.freeName(this.active ? `${this.active} copy` : "Default"), this.snapshots());
+      if (entry) await this.setActive(entry.name);
+      await this.load();
+      cx.notify();
+    });
+  }
+
+  startRename() {
+    this.renaming = true;
+    this.nameBox.set_value(this.active ?? "");
+    this.nameBox.focus();
+  }
+
+  finishRename(cx) {
+    if (!this.renaming) return;
+    const name = this.nameBox.value().trim();
+    const from = this.profiles.find((p) => p.name === this.active);
+    this.renaming = false;
+    if (!from || name === from.name) return cx.notify();
+    if (!validProfileName(name)) this.notes.profile = "A name can't be empty, start with a dot or have a slash.";
+    else if (this.profiles.some((p) => p.name === name)) this.notes.profile = `There's already a profile called ${name}.`;
     else {
-      delete this.notes[id];
+      delete this.notes.profile;
       cx.spawn(async (cx) => {
-        await exec("mv", ["-n", entry.path, `${this.profilesFolder()}/${name}.json`]);
-        this.section = PROFILE + name;
+        await exec("mv", ["-n", from.path, `${this.profilesFolder()}/${name}.json`]);
+        await this.setActive(name);
         await this.load();
         cx.notify();
       });
@@ -207,32 +289,17 @@ export default class BetterConfig extends View {
     cx.notify();
   }
 
-  deleteProfile(entry, cx) {
+  // The settings stay as they are; nothing follows a profile until one is picked again.
+  deleteProfile(cx) {
+    const entry = this.profiles.find((p) => p.name === this.active);
+    this.confirmDelete = false;
+    if (!entry) return;
     cx.spawn(async (cx) => {
       await exec("rm", ["-f", "--", entry.path]);
-      this.confirmDelete = null;
-      this.section = this.mods[0]?.name ?? null;
+      await this.setActive(null);
       await this.load();
       cx.notify();
     });
-  }
-
-  // Sets the profile's values, one write per mod; settings it doesn't hold stay as they are.
-  applyProfile(entry, cx) {
-    const byMod = {};
-    for (const [mod, key, value] of this.pending(entry)) (byMod[mod] ??= []).push([key, value]);
-    for (const [mod, edits] of Object.entries(byMod)) this.change(mod, edits, cx);
-  }
-
-  // A setting's profile chip: off adds the current value, a stale one takes the current value,
-  // a matching one leaves the profile.
-  toggleInProfile(entry, mod, field, cx) {
-    const now = this.valueNow(mod.name, field.key);
-    const held = entry.profile?.values?.[mod.name]?.[field.key];
-    const inside = held !== undefined;
-    const next = inside && equal(held, now) ? undefined : now;
-    if (next === undefined && !inside) return;
-    this.saveProfile(entry, withValue(entry.profile, mod.name, field.key, next), cx);
   }
 
   titleOf(mod) {
@@ -256,7 +323,18 @@ export default class BetterConfig extends View {
   // only if nobody changed it meanwhile, else read again and redo.
   change(name, edits, cx) {
     cx.spawn(async (cx) => {
-      let failed = null;
+      const failed = await this.write(name, edits);
+      if (failed) this.notes[`${name}:*`] = `Couldn't save: ${failed}`;
+      else delete this.notes[`${name}:*`];
+      await this.load();
+      cx.notify();
+    });
+  }
+
+  // Writes the edits to the mod's file; returns why it couldn't, or null.
+  async write(name, edits) {
+    let failed = null;
+    {
       for (let attempt = 0; attempt < 3; attempt++) {
         const mod = this.mods.find((m) => m.name === name);
         if (!mod || mod.error) break;
@@ -279,11 +357,8 @@ export default class BetterConfig extends View {
           await this.load();
         }
       }
-      if (failed) this.notes[`${name}:*`] = `Couldn't save: ${failed}`;
-      else delete this.notes[`${name}:*`];
-      await this.load();
-      cx.notify();
-    });
+    }
+    return failed;
   }
 
   // Back to what the mod ships with: its described default, or nothing.
@@ -382,7 +457,7 @@ export default class BetterConfig extends View {
   }
 
   // A dropdown for a choice with too many options for buttons. Arrows, Enter and Esc work in it.
-  dropdown(t, id, label, choices, now, onPick) {
+  dropdown(t, id, label, choices, now, onPick, anchor = "top_right") {
     const entries = Object.entries(choices);
     const open = this.openMenu === id;
     const setOpen = (value, cx) => {
@@ -464,7 +539,7 @@ export default class BetterConfig extends View {
       .when(open, (el) => el.track_focus(this.triggerFocus))
       .content_focus_handle(this.menuFocus)
       .on_open_change((value, cx) => setOpen(value, cx))
-      .child(Popup.new(`${id}-popup`, trigger).anchor("top_right").when(open, (el) => el.content(menu)));
+      .child(Popup.new(`${id}-popup`, trigger).anchor(anchor).when(open, (el) => el.content(menu)));
   }
 
   // − value +
@@ -498,7 +573,6 @@ export default class BetterConfig extends View {
   // Text boxes for the settings typed in. Herdr allows making them only outside render,
   // so they're made here, after each load.
   makeInputs() {
-    for (const entry of this.profiles) this.makeNameInput(entry);
     for (const mod of this.mods) {
       if (!mod.manifest) continue;
       for (const field of mod.fields)
@@ -546,183 +620,64 @@ export default class BetterConfig extends View {
     state.on("submit", (_e, cx) => commit(cx));
   }
 
-  makeNameInput(entry) {
-    const id = `${PROFILE}${entry.name}`;
-    if (this.inputs[id]) return;
-    const state = InputState.new({ placeholder: "Profile name" });
-    state.set_value(entry.name);
-    const box = (this.inputs[id] = { state, focused: false, shown: entry.name });
-    const commit = (cx) => {
-      const now = this.profiles.find((p) => p.name === entry.name);
-      if (now) this.renameProfile(now, state.value().trim(), cx);
-    };
-    state.on("focus", (_e, cx) => {
-      box.focused = true;
-      cx.notify();
-    });
-    state.on("blur", (_e, cx) => {
-      box.focused = false;
-      commit(cx);
-    });
-    state.on("submit", (_e, cx) => commit(cx));
-  }
-
-  // One chip per profile under a setting: filled when the profile holds it, dotted when what it holds isn't the value now.
-  profileChips(t, mod, field) {
-    if (!this.profiles.length || !mod.manifest) return null;
-    const now = this.valueNow(mod.name, field.key);
-    return h_flex()
-      .gap(4)
-      .pt(2)
-      .flex_wrap()
-      .children(
-        this.profiles.map((entry) => {
-          const held = entry.profile?.values?.[mod.name]?.[field.key];
-          const inside = held !== undefined;
-          const stale = inside && !equal(held, now);
-          const tip = !inside
-            ? `Add this value to ${entry.name}`
-            : stale
-              ? `${entry.name} holds ${showValue(held) || "empty"}: click to take the value now`
-              : `Remove from ${entry.name}`;
-          return h_flex()
-            .id(`bc-chip-${entry.name}-${mod.name}-${field.key}`)
-            .gap(4)
-            .items_center()
-            .px(6)
-            .py(1)
-            .rounded(5)
-            .border_1()
-            .text_size(11)
-            .cursor_pointer()
-            .border_color(inside ? t.accent : t.border)
-            .bg(inside && !stale ? t.accent : "#00000000")
-            .text_color(inside && !stale ? t.accent_foreground : inside ? t.accent : t.dim)
-            .hover((s) => s.bg(t.hover).text_color(t.foreground))
-            .tooltip(tip)
-            .on_click((_e, cx) => this.toggleInProfile(entry, mod, field, cx))
-            .when(stale, (el) => el.child(div().w(5).h(5).rounded(3).bg(t.accent)))
-            .child(entry.name);
-        }),
-      );
-  }
-
-  // A profile: its name, Apply, and each value it holds beside the value now.
-  profilePage(t, entry) {
-    const pending = this.pending(entry);
-    const entries = profileEntries(entry.profile);
-    const id = `${PROFILE}${entry.name}`;
-    const box = this.inputs[id];
-    if (box && !box.focused && box.shown !== entry.name) {
-      box.state.set_value(entry.name);
-      box.shown = entry.name;
-    }
-    const shown = (mod, key, value) => {
-      const field = mod?.fields.find((f) => f.key === key);
-      return value === undefined || showValue(value) === "" ? "empty" : (field?.choices?.[value] ?? showValue(value));
-    };
-    const deleting = this.confirmDelete === entry.name;
-    const byMod = [];
-    for (const [modName, key, value] of entries) {
-      let group = byMod.find((g) => g.modName === modName);
-      if (!group) byMod.push((group = { modName, items: [] }));
-      group.items.push([key, value]);
-    }
+  // Above the list: which profile is in place, and New, Clone, Rename, Delete.
+  profileBar(t) {
+    const choices = Object.fromEntries(this.profiles.map((p) => [p.name, p.name]));
+    if (!this.active) choices[""] = this.profiles.length ? "No profile" : "No profiles yet";
+    const action = (id, label, onClick) =>
+      div()
+        .id(id)
+        .px(6)
+        .py(3)
+        .rounded(5)
+        .text_size(12)
+        .text_color(t.dim)
+        .cursor_pointer()
+        .hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => onClick(cx))
+        .child(label);
+    const nameInput = div()
+      .h(28)
+      .px(8)
+      .flex()
+      .items_center()
+      .rounded(7)
+      .border_1()
+      .border_color(t.accent)
+      .bg(t.background)
+      .text_size(13)
+      .child(Input.new(this.nameBox).h(26).w_full().text_color(t.foreground));
     return v_flex()
+      .px(10)
+      .pb(12)
+      .gap(6)
+      .child(div().text_size(11.5).font_semibold().text_color(t.dim).child("PROFILE"))
+      .child(
+        this.renaming
+          ? nameInput
+          : this.dropdown(t, "bc-profile", "Profile", choices, this.active ?? "", (v, cx) => v && this.switchTo(v, cx), "bottom_left"),
+      )
       .child(
         h_flex()
-          .h(30)
-          .gap(10)
-          .items_center()
-          .child(
-            div()
-              .w(240)
-              .h(28)
-              .px(8)
-              .flex()
-              .items_center()
-              .rounded(7)
-              .border_1()
-              .border_color(this.notes[id] ? t.ansi1 : box?.focused ? t.accent : t.border)
-              .bg(t.background)
-              .text_size(15)
-              .child(box ? Input.new(box.state).h(26).w_full().text_color(t.foreground) : entry.name),
-          )
-          .child(div().flex_1())
-          .child(
-            pending.length
-              ? this.button(t, `bc-apply-${entry.name}`, `Apply ${pending.length}`, (cx) => this.applyProfile(entry, cx))
-              : div().text_size(12.5).text_color(t.dim).child(entries.length ? "In place" : ""),
-          )
-          .child(
-            this.button(t, `bc-delete-${entry.name}`, deleting ? "Delete for good" : "Delete", (cx) => {
-              if (deleting) this.deleteProfile(entry, cx);
-              else {
-                this.confirmDelete = entry.name;
-                cx.notify();
-              }
-            }),
+          .gap(2)
+          .flex_wrap()
+          .child(action("bc-p-new", "New", (cx) => this.newProfile(cx)))
+          .child(action("bc-p-clone", "Clone", (cx) => this.cloneProfile(cx)))
+          .when(Boolean(this.active), (el) =>
+            el
+              .child(action("bc-p-rename", "Rename", (cx) => (this.startRename(), cx.notify())))
+              .child(
+                action("bc-p-delete", this.confirmDelete ? "Delete for good" : "Delete", (cx) => {
+                  if (this.confirmDelete) this.deleteProfile(cx);
+                  else {
+                    this.confirmDelete = true;
+                    cx.notify();
+                  }
+                }),
+              ),
           ),
       )
-      .child(
-        div()
-          .pt(4)
-          .text_size(12.5)
-          .text_color(t.dim)
-          .child(
-            `Applying sets only the settings below; the rest stay as they are. Add one with the ${entry.name} chip under any setting. Saved to ~/.config/herdr-mods/better-config/profiles/.`,
-          ),
-      )
-      .when(Boolean(this.notes[id]), (el) => el.child(div().pt(10).text_size(13).text_color(t.ansi1).child(this.notes[id])))
-      .when(!entries.length, (el) =>
-        el.child(div().pt(18).text_size(13).text_color(t.dim).child("No settings yet. Open a mod's page and click this profile's chip under a setting.")),
-      )
-      .children(
-        byMod.map(({ modName, items }) => {
-          const mod = this.mods.find((m) => m.name === modName && m.manifest);
-          return v_flex()
-            .child(this.heading(t, mod ? this.titleOf(mod) : `${modName} (not installed)`))
-            .children(
-              items.map(([key, value]) => {
-                const field = mod?.fields.find((f) => f.key === key);
-                const now = this.valueNow(modName, key);
-                const differs = mod && !equal(now, value);
-                return h_flex()
-                  .w_full()
-                  .gap(12)
-                  .py(9)
-                  .items_center()
-                  .border_b(1)
-                  .border_color(t.border)
-                  .child(
-                    v_flex()
-                      .flex_1()
-                      .min_w(0)
-                      .gap(2)
-                      .child(div().text_size(13.5).text_color(t.foreground).child(field?.title ?? key))
-                      .child(div().text_size(11.5).text_color(t.dim).font_family("JetBrains Mono").child(key)),
-                  )
-                  .child(div().text_size(12.5).font_family("JetBrains Mono").text_color(t.foreground).child(shown(mod, key, value)))
-                  .when(Boolean(differs), (el) =>
-                    el.child(div().text_size(12.5).font_family("JetBrains Mono").text_color(t.dim).child(`now ${shown(mod, key, now)}`)),
-                  )
-                  .child(
-                    div()
-                      .id(`bc-drop-${entry.name}-${modName}-${key}`)
-                      .px(6)
-                      .py(3)
-                      .rounded(5)
-                      .text_size(12)
-                      .text_color(t.dim)
-                      .cursor_pointer()
-                      .hover((s) => s.bg(t.hover).text_color(t.foreground))
-                      .on_click((_e, cx) => this.saveProfile(entry, withValue(entry.profile, modName, key, undefined), cx))
-                      .child("Remove"),
-                  );
-              }),
-            );
-        }),
-      );
+      .when(Boolean(this.notes.profile), (el) => el.child(div().text_size(12).text_color(t.ansi1).child(this.notes.profile)));
   }
 
   textBox(t, mod, field, value) {
@@ -797,8 +752,7 @@ export default class BetterConfig extends View {
             el.child(div().text_size(12.5).line_height("18px").text_color(t.dim).child(about)),
           )
           .child(div().text_size(11.5).text_color(t.dim).font_family("JetBrains Mono").child(field.key))
-          .when(Boolean(problem), (el) => el.child(div().text_size(12.5).text_color(t.ansi1).child(problem)))
-          .when(this.profiles.length > 0, (el) => el.child(this.profileChips(t, mod, field))),
+          .when(Boolean(problem), (el) => el.child(div().text_size(12.5).text_color(t.ansi1).child(problem))),
       )
       .when(changed, (el) =>
         el.child(
@@ -949,6 +903,9 @@ export default class BetterConfig extends View {
               : `Saved to mods/${mod.name}/mod.json, which the mod reloads at once.`,
           ),
       )
+      .when(Boolean(this.active), (el) =>
+        el.child(div().text_size(12.5).text_color(t.dim).child(`Profile ${this.active} keeps every change made here.`)),
+      )
       .when(Boolean(mod.error), (el) => el.child(div().pt(14).text_size(13).text_color(t.ansi1).child(mod.error)))
       .when(Boolean(saveNote), (el) => el.child(div().pt(14).text_size(13).text_color(t.ansi1).child(saveNote)))
       .when(Object.keys(mod.lost).length > 0, (el) => el.child(this.lostBanner(t, mod)))
@@ -971,7 +928,8 @@ export default class BetterConfig extends View {
       .gap(2)
       .border_r(1)
       .border_color(t.border)
-      .child(div().px(10).pt(6).pb(12).text_size(16).font_semibold().text_color(t.foreground).child("Mod settings"))
+      .child(div().px(10).pt(6).pb(12).text_size(16).font_semibold().text_color(t.foreground).child("Settings"))
+      .child(this.profileBar(t))
       .child(
         div()
           .id("bc-nav")
@@ -1012,45 +970,6 @@ export default class BetterConfig extends View {
                     .when(Boolean(attention), (el) => el.child(div().w(7).h(7).rounded(4).bg(t.ansi1)));
                 }),
               )
-              .child(div().px(10).pt(16).pb(4).text_size(11.5).font_semibold().text_color(t.dim).child("PROFILES"))
-              .children(
-                this.profiles.map((entry) => {
-                  const on = PROFILE + entry.name === this.section;
-                  const inPlace = profileEntries(entry.profile).length > 0 && !this.pending(entry).length;
-                  return h_flex()
-                    .id(`bc-p-${entry.name}`)
-                    .gap(8)
-                    .px(10)
-                    .py(7)
-                    .items_center()
-                    .rounded(7)
-                    .cursor_pointer()
-                    .bg(on ? t.raised : "#00000000")
-                    .hover((s) => s.bg(t.raised))
-                    .tooltip(inPlace ? "Every value it holds is in place" : "Click to see and apply it")
-                    .on_click((_e, cx) => {
-                      this.section = PROFILE + entry.name;
-                      this.confirmDelete = null;
-                      this.handle.focus();
-                      cx.notify();
-                    })
-                    .child(div().flex_1().min_w(0).truncate().text_size(13.5).text_color(on ? t.foreground : t.muted).child(entry.name))
-                    .when(inPlace, (el) => el.child(svg(I("check")).size(12).text_color(t.accent)));
-                }),
-              )
-              .child(
-                div()
-                  .id("bc-new-profile")
-                  .px(10)
-                  .py(7)
-                  .rounded(7)
-                  .cursor_pointer()
-                  .text_size(13)
-                  .text_color(t.dim)
-                  .hover((s) => s.bg(t.raised).text_color(t.foreground))
-                  .on_click((_e, cx) => this.newProfile(cx))
-                  .child("+ New profile"),
-              ),
           ),
       )
       .child(this.button(t, "bc-herdr", "Herdr settings", () => {
@@ -1062,7 +981,6 @@ export default class BetterConfig extends View {
   render(cx) {
     const t = theme();
     const mod = this.mods.find((m) => m.name === this.section);
-    const profile = this.profiles.find((p) => PROFILE + p.name === this.section);
     return h_flex()
       .id("better-config")
       .track_focus(this.handle)
@@ -1094,9 +1012,7 @@ export default class BetterConfig extends View {
                   .child(
                     !this.loaded
                       ? div().text_size(13).text_color(t.dim).child("Loading…")
-                      : profile
-                        ? this.profilePage(t, profile)
-                        : this.page(t, mod),
+                      : this.page(t, mod),
                   ),
               ),
           )
