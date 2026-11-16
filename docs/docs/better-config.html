@@ -79,14 +79,14 @@
     <li><b>Works with any mod:</b> a mod that ships a schema of its settings gets names, descriptions and checks. Any other mod with a <code>settings</code> block still shows, with its types guessed.</li>
     <li><b>Herdr settings:</b> at the bottom of the list, opens Herdr's own Settings.</li>
   </ul>
-  <p>Where values live: in the <code>settings</code> block of each mod's installed <code>mod.json</code>, holding only what you changed; a change back to the default removes the key. Better Config also keeps a copy of what you changed in <code>~/.config/herdr-mods/better-config/&lt;mod&gt;.json</code>. A value you changed by hand is taken as yours, and the copy follows it. A write only goes through if the file hasn't changed since it was read.</p>
+  <p>Where values live: in the <code>settings</code> block of each mod's installed <code>mod.json</code>, holding only what you changed; a change back to the default removes the key. Better Config also keeps a copy of what you changed in <code>~/.config/herdr-app/data/better-config/&lt;mod&gt;.json</code>. A value you changed by hand is taken as yours, and the copy follows it. A write only goes through if the file hasn't changed since it was read.</p>
   <p>Limits: a mod with no <code>settings</code> in its <code>mod.json</code> and none described in a <code>mod.schema.json</code> doesn't appear. Values that are objects show as their separate keys, and a list holds words only. For settings without a described default, only a version change shows an update took them.</p>
 
   <h3 id="better-config-settings">Settings</h3>
   <p>Better Config has no settings of its own.</p>
 
   <h3 id="better-config-update">Update</h3>
-  <p>Copy <code>mods/better-config/</code> into Herdr again. The copy of your changes for other mods lives outside every mod's folder, in <code>~/.config/herdr-mods/better-config/</code>, so updating keeps it.</p>
+  <p>Copy <code>mods/better-config/</code> into Herdr again. The copy of your changes for other mods lives outside every mod's folder, in <code>~/.config/herdr-app/data/better-config/</code>, so updating keeps it.</p>
 
   <h3 id="better-config-developers">For developers</h3>
   <p>To have Better Config show your mod's settings, describe its <code>mod.json</code> in a JSON Schema beside it, <code>mods/&lt;name&gt;/mod.schema.json</code>, and point <code>mod.json</code> at it, so editors check the file too:</p>

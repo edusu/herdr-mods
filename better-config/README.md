@@ -36,7 +36,7 @@ Herdr stops adding new default shortcuts to a `keys.json` you've edited, so if y
 
 Values stay where each mod already reads them: the `settings` block of its installed `mod.json`, which holds only what you changed. A change back to the default removes the key. Nothing about a mod changes, and a mod works the same with or without Better Config.
 
-Better Config also keeps a copy of only what you changed in `~/.config/herdr-mods/better-config/<mod>.json`, outside every mod's folder. When a kept value is missing from `mod.json`, or is back at its default, it asks whether to restore it. A value you changed by hand to something else is taken as yours, and the copy follows it. Every write goes through only if the file hasn't changed since it was read, so it never overwrites an edit made meanwhile.
+Better Config also keeps a copy of only what you changed in `~/.config/herdr-app/data/better-config/<mod>.json`, outside every mod's folder. When a kept value is missing from `mod.json`, or is back at its default, it asks whether to restore it. A value you changed by hand to something else is taken as yours, and the copy follows it. Every write goes through only if the file hasn't changed since it was read, so it never overwrites an edit made meanwhile.
 
 ## Profiles
 
@@ -47,13 +47,13 @@ A profile is a whole set of settings: Herdr's and every mod's. One is in place a
 - **Clone** copies the profile in place under a new name, to change from there.
 - **Rename** and **Delete** act on the profile in place. Deleting leaves the settings as they are, with no profile following them.
 
-Each profile is a file, `~/.config/herdr-mods/better-config/profiles/<name>.json`, holding only values that differ from the defaults:
+Each profile is a file, `~/.config/herdr-app/data/better-config/profiles/<name>.json`, holding only values that differ from the defaults:
 
 ```json
 { "values": { "@herdr": { "zoom": 1.25 }, "notion-notes": { "font_size": 15 } } }
 ```
 
-`@herdr` is Herdr's own `settings.json`; a profile holds only the keys the Herdr page describes, and leaves the rest of the file (theme, sounds, ...) alone. Values for a mod that isn't installed are kept. Which profile is in place is in `~/.config/herdr-mods/better-config/active-profile`, so profiles can be shared between machines without it.
+`@herdr` is Herdr's own `settings.json`; a profile holds only the keys the Herdr page describes, and leaves the rest of the file (theme, sounds, ...) alone. Values for a mod that isn't installed are kept. Which profile is in place is in `~/.config/herdr-app/data/better-config/active-profile`, so profiles can be shared between machines without it.
 
 ## Describe a mod's settings
 

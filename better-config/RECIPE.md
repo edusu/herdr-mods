@@ -16,7 +16,7 @@ It lists the folders in `~/.config/herdr-app/mods/` and reads each `mod.json` an
 
 A change edits only that key in the mod's `mod.json` and writes the whole file with `writeTextFile`, passing the text it read, so it fails if the file changed meanwhile; then it rereads and tries again, up to three times, as Herdr's Settings does with `settings.json`. Herdr reloads a mod when its `mod.json` is saved. A value equal to the default, and so Reset, removes the key, and an empty `settings` block goes too: `settings` holds only what the person changed.
 
-`~/.config/herdr-mods/better-config/<mod>.json` holds `{ version, values }`: the dotted keys that differ from their defaults. After each write it's updated at once. On each read, a kept value that's gone from `mod.json`, or back at its default, or different after a version change, is lost: the page offers to restore it. Anything else that differs is a hand edit, and the copy follows the file. It rereads every 3 seconds while open.
+`~/.config/herdr-app/data/better-config/<mod>.json` holds `{ version, values }`: the dotted keys that differ from their defaults. After each write it's updated at once. On each read, a kept value that's gone from `mod.json`, or back at its default, or different after a version change, is lost: the page offers to restore it. Anything else that differs is a hand edit, and the copy follows the file. It rereads every 3 seconds while open.
 
 Text boxes are made after each read, never during a render, which Herdr forbids. The dropdown is base's `Select` with a `Popup`, and moves the keyboard onto its list when opened by a click.
 

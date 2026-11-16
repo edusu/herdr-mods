@@ -2,7 +2,7 @@
 // Herdr's own Settings. Values stay in each mod's mod.json `settings` block,
 // where the mod (and any helper beside it) already reads them, and Herdr
 // reloads a mod when that file is saved. A copy of what the person changed is
-// kept in ~/.config/herdr-mods/better-config/, outside every mod, so values an
+// kept in <app home>/data/better-config/, outside every mod, so values an
 // update wiped can be put back.
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, Scrollbar, InputState, Input, Select, Popup, Checkbox } from "gpui-base";
@@ -54,19 +54,28 @@ export default class BetterConfig extends View {
     this.nameBox.on("blur", (_e, cx) => this.finishRename(cx));
     this.nameBox.on("submit", (_e, cx) => this.finishRename(cx));
     cx.spawn(async (cx) => {
+      await this.moveOldFolder();
       await this.load();
       cx.notify();
     });
     // Picks up edits made by hand, or by an update, while the dialog is open.
     cx.timer.every(POLL_MS, (cx) =>
       cx.spawn(async (cx) => {
-        if (await this.load()) cx.notify();
+        if (this.loaded && (await this.load())) cx.notify();
       }),
     );
   }
 
   keptFolder() {
-    return `${home()}/.config/herdr-mods/better-config`;
+    return `${appHome()}/data/better-config`;
+  }
+
+  // The folder used to be ~/.config/herdr-mods/better-config. Herdr makes the new one for the mod's own
+  // data, so the old files move into it, over any copy written before they did.
+  async moveOldFolder() {
+    const script =
+      '[ -d "$1" ] || exit 0; mkdir -p "$2" && for f in "$1"/*; do [ -e "$f" ] && mv -f "$f" "$2/"; done; rmdir "$1" "$(dirname "$1")" 2>/dev/null; true';
+    await exec("/bin/sh", ["-c", script, "sh", `${home()}/.config/herdr-mods/better-config`, this.keptFolder()]);
   }
 
   // Every installed mod with settings: described by its mod.schema.json, or set in its mod.json. Returns whether anything changed.
