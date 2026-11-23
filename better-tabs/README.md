@@ -28,7 +28,7 @@ No requirements. The mod runs no programs and reaches no network. It runs Herdr 
 - The **+** sits right after the last tab.
 - **Scroll over the bar** to switch tabs. Wheel notches switch once each; touchpad gestures switch in steps.
 - Double-click to rename, right-click for the tab menu (rename, new tab, close, or copy its terminal addresses such as `t9, t12` to hand to an agent), and close the active tab with its ×.
-- **Tabs name themselves** and keep up: an agent by its useful live title, or its name when the title is generic; a shell by its folder; another program by its name (Neovim). Your own names stay, and renaming a tab to nothing hands it back.
+- **Tabs name themselves** and keep up: an agent by its useful live title, or its name when the title is generic; a shell by its folder; another program by its name (Neovim); a pane you named (Rename in the pane menu) gives the tab that name. Your own names stay, and renaming a tab to nothing hands it back.
 - Program icons, a spinner while working, and a dot when blocked or done.
 - **Drag panel buttons** (Files, Changes and any you add) to reorder them, the same way.
 - **The ⋮ menu:** drop a panel button on it to hide it. Click **⋮** to see hidden buttons, then click one to use it, drag it back out, or click its **pin** to return it to the toolbar. The menu also holds buttons there's no room for.

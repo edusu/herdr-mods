@@ -913,6 +913,18 @@ test("another bar waits for a rename the first one asked for", () => {
   assert.deepEqual(plain(second), { renames: [], records: plain(first.records) });
 });
 
+test("a pane the person named names its tab, ahead of the agent's title, and a named mod pane too", () => {
+  const h = harness();
+  const spaces = [{ id: "a", tabs: [named("t1", 1, "Claude Code"), { id: "t2", name: "2", named: false }] }];
+  const panes = [
+    { pane: "p1", tab: "t1", terminal: "x1", title: "Fix the login form", cwd: "/work", program: AGENT("Claude Code") },
+    { pane: "p2", tab: "t1", terminal: "x2", name: "Reviewer", title: "zsh", cwd: "/work", program: AGENT("Claude Code") },
+    { pane: "p3", tab: "t2", terminal: null, mod: "notes", name: "Notes", title: "notes" },
+  ];
+  const { renames } = h.planNames(spaces, panes, {}, 1000, "/home/sam");
+  assert.deepEqual(plain(renames), [{ id: "t1", name: "Reviewer" }, { id: "t2", name: "Notes" }]);
+});
+
 test("a title is cleaned: one line, no status glyph in front, and cut when long", () => {
   const pane = { pane: "p1", tab: "t1", terminal: "x1", title: "✳ Fix the login\nform ", cwd: "/work", program: AGENT("Claude Code") };
   const { h, tick } = naming([unnamed("t1", 1)], [pane]);

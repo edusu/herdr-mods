@@ -67,9 +67,11 @@ function onlyFolder(title, cwd, folder) {
 }
 
 // What a pane would call its tab, and how strongly. An agent's title is its topic, unless it's
-// empty or only its folder, and then the agent goes by its name. A mod's pane has no program,
-// so it names nothing.
+// empty or only its folder, and then the agent goes by its name. A name the person gave the
+// pane (pane.rename) beats them all. A mod's pane has no program, so unnamed it names nothing.
 function paneName(pane, homePath) {
+  const given = cleanName(pane.name);
+  if (given) return { name: given, rank: 4 };
   const program = pane.program;
   if (!program) return null;
   const folder = folderName(pane.cwd, homePath);
@@ -89,7 +91,7 @@ function tabWants(tabPanes, homePath) {
   for (const pane of tabPanes) {
     const named = paneName(pane, homePath);
     if (!named) continue;
-    const names = [named.name, titleText(pane.title, pane), cleanName(pane.program.name)];
+    const names = [named.name, titleText(pane.title, pane), cleanName(pane.program?.name)];
     for (const name of [...names, folderName(pane.cwd, homePath)]) if (name) known.add(name);
     if (named.name && named.rank > (best?.rank ?? 0)) best = named;
   }

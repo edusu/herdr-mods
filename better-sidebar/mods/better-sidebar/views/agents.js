@@ -733,8 +733,10 @@ export class Agents {
 
   // What a row is called: its tab's title, as Herdr's tab bar shows it, or with
   // `agent_name: "title"` the terminal's live title, what the agent says it's doing.
-  // Either falls back to the other. The icon says which agent it is.
+  // Either falls back to the other. A name the person gave the pane (pane.rename) beats both.
+  // The icon says which agent it is.
   rowName(a, label) {
+    if (a.pane_name) return a.pane_name;
     const tab = a.tab_name || label;
     return this.nameBy === "title" ? clean(a.title) || tab : tab;
   }

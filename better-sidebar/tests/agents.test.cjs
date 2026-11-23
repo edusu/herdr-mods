@@ -350,6 +350,7 @@ test("agent_name: title names a row by the terminal's live title, falling back t
   await Promise.all(pending);
   assert.equal(mod.rowName({ tab_name: "2", title: "✳ Fix login redirect" }, "2"), "Fix login redirect");
   assert.equal(mod.rowName({ tab_name: "Work", title: "" }, "Work"), "Work", "no title: the tab");
+  assert.equal(mod.rowName({ pane_name: "Reviewer", tab_name: "2", title: "Fix login redirect" }, "2"), "Reviewer", "a named pane beats both");
   assert.equal(mod.rowName({ tab_name: "", title: "⠂ " }, "label"), "label", "a title that's only a spinner counts as none");
 });
 

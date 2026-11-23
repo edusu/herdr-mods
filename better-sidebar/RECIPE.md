@@ -67,7 +67,7 @@ A `settings` block in the installed `mods/better-sidebar/mod.json` carries the p
 - Cmd-clicking a PR number opens its URL without selecting/dragging the row; ordinary clicks still select the space. Draft rows omit their text label but retain their icon, color, and tooltip.
 - Clicking, space menus, same-machine drag reorder, folded machines, and the compact rail still work.
 - With a space on another machine focused, This computer's + and its New space there row make the space on this computer. Rebuilt machines, login-required machines, and machines that stop agents at logout show the documented actions.
-- With `agent_name: "title"`, agent rows read the terminal's live title, and a terminal with no title keeps its tab's name.
+- With `agent_name: "title"`, agent rows read the terminal's live title, and a terminal with no title keeps its tab's name. An agent whose pane was named (`agents()[i].pane_name`, set with `pane.rename`) is called that, whatever the setting.
 - Switching to a space above or below the fold from the keyboard scrolls the list so its row and its tabs show; clicking a row never scrolls the list.
 - Recent puts the space where something last changed first, Name sorts A to Z, worktrees stay under their main space, and Manual brings back the dragged order.
 - Pinned agents stay pinned across Herdr clients and disappear from the pin list when they end; pane-backed sub-agents are not duplicated in the top-level list.
