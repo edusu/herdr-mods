@@ -7,13 +7,16 @@ const runtime = path.join(__dirname, "../mods/better-sidebar");
 
 // Inspect fluent GPUI descriptions without opening a window. Timers do not run
 // automatically; flush() waits for spawned reads, making races deterministic.
-function harness() {
-  const live = { spaces: [], panes: [], machines: [] };
+function harness(stored = {}, options = {}) {
+  const live = { spaces: [], panes: [], machines: [], checking: options.checking ?? false };
   const pending = [],
+    scrolled = [],
     calls = [],
     commands = [],
     overlays = [],
+    timers = [],
     values = {};
+  let hcCalls = 0;
   const colors = {
     foreground: "white",
     dim: "gray",
@@ -28,7 +31,7 @@ function harness() {
     proxy = new Proxy(node, {
       get(target, key) {
         if (key in target) return target[key];
-        if (key === "child")
+        if (key === "child" || key === "trigger" || key === "content")
           return (child) => {
             target.nodes.push(child);
             return proxy;
@@ -59,7 +62,12 @@ function harness() {
   const cx = {
     notify() {},
     stop_propagation() {},
-    timer: { every() {} },
+    focus_handle: () => ({ focus() {} }),
+    timer: {
+      every(ms, fn) {
+        timers.push({ ms, fn });
+      },
+    },
     spawn(fn) {
       pending.push(fn(cx));
     },
@@ -67,7 +75,11 @@ function harness() {
   const context = {
     View: class {},
     div: element,
-    svg: element,
+    svg: (p) => {
+      const e = element();
+      e.svgPath = p;
+      return e;
+    },
     h_flex: element,
     v_flex: element,
     spaces: () => live.spaces,
@@ -77,15 +89,25 @@ function harness() {
     layout: () => ({ id: "sidebar", size: { px: 268 } }),
     window: () => ({ active: true }),
     props: () => ({}),
-    Popover: { new: element },
+    Popover: { new: (id) => element().id(id) },
+    ScrollHandle: { new: () => ({ scroll_to_item: (index) => scrolled.push(index) }) },
     shared: (key) => values[key],
     setShared: (key, value) => {
       values[key] = value;
     },
     run: (name, args) => commands.push({ name, args }),
     openOverlay: (args) => overlays.push(args),
-    localStorage: { getItem: () => null, setItem() {} },
-    hc: async () => ({ code: 0, stdout: '{"machines":[]}' }),
+    localStorage: {
+      getItem: (key) => stored[key] ?? null,
+      setItem(key, value) {
+        stored[key] = String(value);
+      },
+    },
+    hc: async (...args) => {
+      hcCalls++;
+      return options.hc ? options.hc(...args) : { code: 0, stdout: '{"machines":[]}' };
+    },
+    checking: () => live.checking,
     watchFolder: async () => {
       throw Error("No watcher in tests");
     },
@@ -97,6 +119,7 @@ function harness() {
   vm.createContext(context);
   for (const file of [
     "settings.js",
+    "defaults.js",
     "git/pr-status.js",
     "git/checkouts.js",
     "views/find-node.js",
@@ -114,15 +137,21 @@ function harness() {
   mod.init({}, cx);
   return {
     live,
+    scrolled,
+    stored,
     calls,
     commands,
     overlays,
+    timers,
     values,
     colors,
     context,
     cx,
     mod,
     observer: mod.prObserver,
+    get hcCalls() {
+      return hcCalls;
+    },
     flush: async () => {
       while (pending.length) await Promise.all(pending.splice(0));
     },
@@ -461,9 +490,11 @@ test("Git metadata reads preserve remote context and parse ahead/behind", async 
   const h = harness();
   h.context.exec = async (cmd, args, options) => {
     h.calls.push({ cmd, args, options });
-    if (args.includes("status")) return result("# branch.head feature\n# branch.ab +2 -1\n");
     if (args.includes("--show-toplevel")) return result("/tree\n");
-    return result("/repo/.git\n");
+    if (args.includes("--git-common-dir")) return result("/repo/.git\n");
+    if (args.includes("symbolic-ref")) return result("refs/heads/feature\n");
+    if (args.includes("rev-list")) return result("2\t1\n");
+    return result("");
   };
   await h.mod.check('["remote","/tree"]', h.cx);
   const g = h.mod.git['["remote","/tree"]'];
@@ -472,6 +503,14 @@ test("Git metadata reads preserve remote context and parse ahead/behind", async 
   assert.equal(g.behind, 1);
   assert.equal(g.linked, true);
   assert.ok(h.calls.every((call) => call.options.on === "remote" && call.options.cwd === "/tree"));
+  assert.ok(
+    h.calls.every((call) => call.options.timeout > 0),
+    "every Git read has a timeout",
+  );
+  assert.ok(
+    !h.calls.some((call) => call.args.includes("status")),
+    "no worktree scan: the reads are ref-only",
+  );
 });
 
 test("real Git metadata groups a worktree beneath its main checkout", async () => {
@@ -501,7 +540,15 @@ test("real Git metadata groups a worktree beneath its main checkout", async () =
     ]);
     git(["worktree", "add", "-q", "-b", "feature", tree]);
     const h = harness();
-    h.context.exec = async (_cmd, args, options) => result(git(args, options.cwd));
+    // exec reports a failing command, it does not throw: a branch with no
+    // upstream has no ahead/behind to report.
+    h.context.exec = async (_cmd, args, options) => {
+      try {
+        return result(git(args, options.cwd));
+      } catch (e) {
+        return { code: e.status ?? 1, stdout: "", stderr: String(e.stderr ?? e.message) };
+      }
+    };
     h.live.spaces = [
       { id: "tree", name: "feature", folder: tree, tabs: [] },
       { id: "main", name: "main", folder: main, tabs: [] },
@@ -566,6 +613,8 @@ test("package is standalone with local icons and no layout or helper dependency"
     "draft",
     "merged",
     "closed",
+    "grip-vertical",
+    "arrow-down-a-z",
   ]) {
     assert.ok(fs.existsSync(path.join(runtime, `icons/${icon}.svg`)), icon);
   }
@@ -613,4 +662,379 @@ test("spaces publish each space's main space for the agents block", () => {
     "without an open main space, the repository's folder",
   );
   assert.equal(parents.plain, undefined, "not a repository");
+});
+
+// Keyboard space switching: the list scrolls the shown space's row into view, once per change.
+function scrolling() {
+  const h = harness();
+  h.live.spaces = ["trails", "maps", "api", "notes"].map((id) => ({ id, name: id, folder: `/${id}`, tabs: [], active: id === "trails" }));
+  for (const sp of h.live.spaces) h.mod.shown.add(sp.id);
+  const show = (id) => h.live.spaces.forEach((sp) => (sp.active = sp.id === id));
+  return { h, show };
+}
+
+test("the list scrolls to the shown space when it changes, and only then", () => {
+  const { h, show } = scrolling();
+  h.mod.body(h.colors, false);
+  assert.deepEqual(h.scrolled, [0]);
+  h.mod.body(h.colors, false);
+  assert.deepEqual(h.scrolled, [0], "no new space, no scroll");
+  show("api");
+  h.mod.body(h.colors, false);
+  assert.deepEqual(h.scrolled, [0, 2]);
+  assert.equal(find(h.mod.body(h.colors, false), "spaces-list").attributes.track_scroll.length, 1);
+});
+
+test("it scrolls to the space's group, its row and the rows under it, counting the rows above", () => {
+  const { h, show } = scrolling();
+  // As in the lists view: pinned agents on top, and each space's tabs under it.
+  h.mod.above = () => ["pinned agent"];
+  h.mod.under = ({ w }) => [`${w.id} tab 1`, `${w.id} tab 2`];
+  show("api");
+  const list = find(h.mod.body(h.colors, false), "spaces-list");
+  assert.deepEqual(h.scrolled, [3], "1 pinned + the trails and maps groups");
+  const group = list.nodes[3];
+  assert.equal(group.nodes[0].id, "space-api");
+  assert.deepEqual(group.nodes.slice(1), ["api tab 1", "api tab 2"]);
+  show("notes");
+  h.mod.body(h.colors, true);
+  assert.deepEqual(h.scrolled, [3, 4], "on the rail a space is its own row");
+});
+
+test("a shown space that isn't listed, as in a folded machine, doesn't scroll, and coming back does", () => {
+  const { h, show } = scrolling();
+  h.live.spaces.push({ id: "far", name: "far", folder: "/far", tabs: [], machine: "server", active: false });
+  h.mod.shown.add("far");
+  h.mod.folded.add("server");
+  show("maps");
+  h.mod.body(h.colors, false);
+  show("far");
+  h.mod.body(h.colors, false);
+  assert.deepEqual(h.scrolled, [2], "after the local machine header");
+  show("maps");
+  h.mod.body(h.colors, false);
+  assert.deepEqual(h.scrolled, [2, 2], "back to maps, which may have scrolled away meanwhile");
+});
+
+test("a change that follows a press in the list doesn't scroll; a later one does", () => {
+  const { h, show } = scrolling();
+  let now = 100000;
+  vm.runInContext("Date", h.context).now = () => now;
+  const list = find(h.mod.body(h.colors, false), "spaces-list");
+  assert.deepEqual(h.scrolled, [0]);
+  list.handlers.mouse_down_left();
+  show("api");
+  now += 200;
+  h.mod.body(h.colors, false);
+  assert.deepEqual(h.scrolled, [0], "the clicked row stays under the pointer");
+  now += 5000;
+  show("notes");
+  h.mod.body(h.colors, false);
+  assert.deepEqual(h.scrolled, [0, 3]);
+});
+
+// Space sorting. Times are when something in a tab last changed state, as Herdr gives them;
+// they seed a tab the first time it's seen, and after that a change of status stamps it.
+const tab = (id, changed_at = null, working_since = null, status = null) => ({ id, changed_at, working_since, status });
+function sortable(stored) {
+  const h = harness(stored);
+  h.live.spaces = [
+    { id: "trails", name: "trails", folder: "/trails", tabs: [tab("t1", 100)] },
+    { id: "maps", name: "Maps", folder: "/maps", tabs: [tab("t2", null), tab("t3", 300)] },
+    { id: "quiet", name: "quiet", folder: "/quiet", tabs: [tab("t4")] },
+    { id: "api", name: "api", folder: "/api", tabs: [tab("t5", 200)] },
+    { id: "idle", name: "Idle", folder: "/idle", tabs: [] },
+  ];
+  for (const sp of h.live.spaces) h.mod.shown.add(sp.id);
+  // Each look is a second later, so changes stamped one after another don't tie.
+  let clock = 1e12;
+  vm.runInContext("Date", h.context).now = () => (clock += 1000);
+  return h;
+}
+const ids = (h) => Array.from(h.mod.ordered(), (r) => r.w.id);
+
+test("spaces keep Herdr's order until a sort is picked", () => {
+  const h = sortable();
+  assert.deepEqual(ids(h), ["trails", "maps", "quiet", "api", "idle"]);
+  h.values["spaces.sort"] = "nonsense";
+  assert.deepEqual(ids(h), ["trails", "maps", "quiet", "api", "idle"]);
+});
+
+test("Recent puts the space with the latest change first, and quiet ones after in Herdr's order", () => {
+  const h = sortable();
+  h.values["spaces.sort"] = "recent";
+  assert.deepEqual(ids(h), ["maps", "api", "trails", "quiet", "idle"]);
+  h.live.spaces[2].tabs[0].status = "working";
+  assert.deepEqual(ids(h), ["quiet", "maps", "api", "trails", "idle"]);
+});
+
+test("Recent doesn't move a space when looking at it turns done into idle", () => {
+  const h = sortable();
+  h.values["spaces.sort"] = "recent";
+  ids(h);
+  h.live.spaces[0].tabs[0].status = "done";
+  assert.deepEqual(ids(h), ["trails", "maps", "api", "quiet", "idle"], "finishing is a change");
+  h.live.spaces[1].tabs[1].status = "working";
+  assert.deepEqual(ids(h), ["maps", "trails", "api", "quiet", "idle"]);
+  h.live.spaces[0].tabs[0].status = "idle";
+  h.live.spaces[0].tabs[0].changed_at = 2e12;
+  assert.deepEqual(ids(h), ["maps", "trails", "api", "quiet", "idle"], "seeing it isn't");
+});
+
+test("Recent keeps its order across a restart", () => {
+  const stored = {};
+  const h = sortable(stored);
+  h.values["spaces.sort"] = "recent";
+  ids(h);
+  h.live.spaces[2].tabs[0].status = "working";
+  assert.deepEqual(ids(h), ["quiet", "maps", "api", "trails", "idle"]);
+  const again = sortable(stored);
+  again.values["spaces.sort"] = "recent";
+  // After a restart Herdr has no stamps of its own.
+  for (const sp of again.live.spaces) for (const t of sp.tabs) t.changed_at = null;
+  again.live.spaces[2].tabs[0].status = "working";
+  assert.deepEqual(ids(again), ["quiet", "maps", "api", "trails", "idle"]);
+});
+
+test("a sorted list holds still while a row is pressed, and the pressed row doesn't fade", () => {
+  const h = sortable();
+  h.values["spaces.sort"] = "recent";
+  const tree = h.mod.body(h.colors, false);
+  find(tree, "space-api").handlers.mouse_down_left({}, h.cx);
+  find(tree, "space-trails").handlers.mouse_move({}, h.cx);
+  h.live.spaces[2].tabs[0].status = "working";
+  assert.deepEqual(ids(h), ["maps", "api", "trails", "quiet", "idle"], "held while pressed");
+  const pressed = find(h.mod.body(h.colors, false), "space-api");
+  assert.ok(!JSON.stringify(pressed).includes('"opacity"'), "not faded like a drag");
+  pressed.handlers.mouse_up_left({}, h.cx);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.commands)), [{ name: "space.select", args: { id: "api" } }]);
+  assert.deepEqual(ids(h), ["quiet", "maps", "api", "trails", "idle"], "moves once released");
+});
+
+test("Name sorts A to Z, case aside", () => {
+  const h = sortable();
+  h.values["spaces.sort"] = "name";
+  assert.deepEqual(ids(h), ["api", "idle", "maps", "quiet", "trails"]);
+});
+
+test("a worktree stays under its main space, which sorts by the latest change in either", () => {
+  const h = harness();
+  h.live.spaces = [
+    { id: "main", name: "repo", folder: "/repo", tabs: [tab("a", 10)] },
+    { id: "other", name: "other", folder: "/other", tabs: [tab("b", 50)] },
+    { id: "child", name: "feature", folder: "/tree", tabs: [tab("c", 90)] },
+  ];
+  for (const sp of h.live.spaces) h.mod.shown.add(sp.id);
+  h.mod.git['[null,"/repo"]'] = { repo: '[null,"/repo/.git"]', linked: false, branch: "main" };
+  h.mod.git['[null,"/tree"]'] = { repo: '[null,"/repo/.git"]', linked: true, branch: "feature" };
+  h.values["spaces.sort"] = "recent";
+  const rows = h.mod.ordered();
+  assert.deepEqual(Array.from(rows, (r) => r.w.id), ["main", "child", "other"]);
+  assert.equal(rows[0].kids, 1);
+  assert.ok(rows[1].tree);
+  h.values["spaces.sort"] = "name";
+  assert.deepEqual(ids(h), ["other", "main", "child"]);
+});
+
+test("the sort menu sits beside New space, shows the choice, and remembers a pick", () => {
+  const h = sortable();
+  const header = h.mod.header(h.colors, false);
+  const trigger = find(header, "space-sort");
+  assert.ok(trigger, "the menu's button is in the header");
+  assert.ok(find(header, "space-new"), "beside New space");
+  h.mod.sortOpen = true;
+  const open = h.mod.header(h.colors, false);
+  assert.match(text(find(open, "space-sort-menu-body")), /Sort spaces\s+Manual\s+Recent\s+Name/);
+  const checked = (tree, id) => JSON.stringify(find(tree, id), (k, v) => (k === "svgPath" || typeof v !== "string" ? v : undefined)).includes("icons/check.svg");
+  const icon = (tree) => JSON.stringify(find(tree, "space-sort")).match(/icons\/([a-z-]+)\.svg/)?.[1];
+  assert.ok(checked(open, "space-sort-manual") && !checked(open, "space-sort-recent"), "Manual is ticked");
+  assert.equal(icon(open), "grip-vertical");
+  find(open, "space-sort-recent").handlers.click({}, h.cx);
+  assert.equal(h.values["spaces.sort"], "recent");
+  assert.equal(h.mod.sortOpen, false);
+  h.mod.sortOpen = true;
+  const after = h.mod.header(h.colors, false);
+  assert.ok(checked(after, "space-sort-recent") && !checked(after, "space-sort-manual"), "Recent is ticked");
+  assert.equal(icon(after), "clock");
+  assert.deepEqual(ids(h), ["maps", "api", "trails", "quiet", "idle"]);
+});
+
+test("dragging moves a space only in Herdr's order; sorted, a press just selects", () => {
+  const h = sortable();
+  const drag = (from, to) => {
+    const rows = h.mod.ordered();
+    const tree = h.mod.body(h.colors, false);
+    find(tree, `space-${rows[from].w.id}`).handlers.mouse_down_left({}, h.cx);
+    find(tree, `space-${rows[to].w.id}`).handlers.mouse_move({}, h.cx);
+    find(h.mod.body(h.colors, false), `space-${rows[to].w.id}`).handlers.mouse_up_left({}, h.cx);
+  };
+  drag(0, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.commands.at(-1))), { name: "space.move", args: { id: "trails", index: 4 } });
+  h.commands.length = 0;
+  h.values["spaces.sort"] = "recent";
+  drag(0, 2);
+  assert.equal(h.commands.length, 0);
+  const first = h.mod.ordered()[0].w.id;
+  const tree = h.mod.body(h.colors, false);
+  find(tree, `space-${first}`).handlers.mouse_down_left({}, h.cx);
+  find(h.mod.body(h.colors, false), `space-${first}`).handlers.mouse_up_left({}, h.cx);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.commands)), [{ name: "space.select", args: { id: "maps" } }]);
+});
+
+
+test("this computer's + and New space there make the space here, not on the focused space's machine", () => {
+  const h = harness();
+  const cx = { stop_propagation() {} };
+  h.mod.machineAddButton(null, h.colors).handlers.click({}, cx);
+  h.mod.newSpaceRow(null, h.colors, false).handlers.click({}, cx);
+  h.mod.machineAddButton("server", h.colors).handlers.click({}, cx);
+  assert.deepEqual(
+    h.commands.map((c) => JSON.stringify(c.args)),
+    ['{"machine":""}', '{"machine":""}', '{"machine":"server"}'],
+  );
+});
+
+test("a check loads the mod without helpers, timers or Git", () => {
+  const check = harness({}, { checking: true });
+  assert.equal(check.hcCalls, 0, "no machine list during a check");
+  assert.equal(check.timers.length, 0, "no timers during a check");
+  const live = harness();
+  assert.equal(live.hcCalls, 1, "a live window asks for the machines");
+  assert.equal(live.timers.length, 2, "and keeps two timers");
+});
+
+test("a repo that is gone stops its watch", () => {
+  const h = harness();
+  let cancelled = 0;
+  h.context.watchFolder = () => {
+    const pending = new Promise(() => {});
+    pending.cancel = () => {
+      cancelled++;
+    };
+    return pending;
+  };
+  h.mod.watch("/repo/.git", h.cx);
+  assert.equal(h.mod.watching.size, 1);
+  h.mod.git = { '[null,"/repo"]': { repo: '[null,"/repo/.git"]' } };
+  h.mod.dropUnused();
+  assert.equal(cancelled, 0, "the repo is still in use");
+  h.mod.git = {};
+  h.mod.dropUnused();
+  assert.equal(cancelled, 1, "the watch is stopped");
+  assert.equal(h.mod.watching.size, 0);
+});
+
+test("a machine that needs a login shows the command that fixes it", () => {
+  const h = harness();
+  h.mod.machines = [{ name: "server", state: "needs_login" }];
+  const row = h.mod.loginRow("server", h.colors);
+  assert.match(text(row), /hc machine login server/);
+  assert.ok(find(row, "machine-login-copy-server"));
+  h.mod.machines = [{ name: "server", state: "connected" }];
+  assert.equal(h.mod.loginRow("server", h.colors), null, "a connected machine needs no login");
+});
+
+test("a machine that was rebuilt offers to connect to the new one", () => {
+  const h = harness();
+  h.mod.machines = [
+    { name: "server", state: "unreachable", why: 'a different core answers there ("vps")' },
+  ];
+  assert.ok(h.mod.rebuilt(h.mod.machines[0]));
+  assert.ok(find(h.mod.machineHeader("server", h.colors, false), "machine-connect-server"));
+  h.mod.machines = [{ name: "server", state: "unreachable", why: "the host is asleep" }];
+  assert.equal(h.mod.rebuilt(h.mod.machines[0]), false, "another reason is not a rebuild");
+});
+
+test("the header warns when the machine stops its agents at logout", () => {
+  const h = harness();
+  h.mod.machines = [{ name: "server", state: "connected", keeps_running_after_logout: false }];
+  assert.ok(find(h.mod.machineHeader("server", h.colors, false), "machine-logout-server"));
+  h.mod.machines = [{ name: "server", state: "connected", keeps_running_after_logout: true }];
+  assert.equal(find(h.mod.machineHeader("server", h.colors, false), "machine-logout-server"), undefined);
+});
+
+test("a drag moves a space to Herdr's own place, not the row's", () => {
+  const h = harness();
+  h.live.spaces = [
+    { id: "tree", name: "feature", folder: "/tree", tabs: [] },
+    { id: "main", name: "repo", folder: "/repo", tabs: [] },
+  ];
+  for (const s of h.live.spaces) h.mod.shown.add(s.id);
+  h.mod.git['[null,"/repo"]'] = { repo: '[null,"/repo/.git"]', linked: false, branch: "main" };
+  h.mod.git['[null,"/tree"]'] = { repo: '[null,"/repo/.git"]', linked: true, branch: "feature" };
+  // The worktree hangs under its main space in the list, but keeps its own
+  // place in Herdr's order.
+  assert.deepEqual(
+    Array.from(h.mod.ordered(), (r) => r.w.id),
+    ["main", "tree"],
+  );
+  h.commands.length = 0;
+  find(h.mod.body(h.colors, false), "space-main").handlers.mouse_down_left({}, h.cx);
+  find(h.mod.body(h.colors, false), "space-tree").handlers.mouse_move({}, h.cx);
+  find(h.mod.body(h.colors, false), "space-tree").handlers.mouse_up_left({}, h.cx);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.commands.at(-1))), {
+    name: "space.move",
+    args: { id: "main", index: 1 },
+  });
+});
+
+// The worktree spaces are moved under their main checkout in Herdr's own
+// order, so the number keys pick the space the row shows.
+function nested(h) {
+  h.live.spaces = [
+    { id: "tree", name: "feature", folder: "/tree", tabs: [] },
+    { id: "main", name: "repo", folder: "/repo", tabs: [] },
+  ];
+  for (const s of h.live.spaces) h.mod.shown.add(s.id);
+  h.mod.git['[null,"/repo"]'] = { repo: '[null,"/repo/.git"]', linked: false, branch: "main" };
+  h.mod.git['[null,"/tree"]'] = { repo: '[null,"/repo/.git"]', linked: true, branch: "feature" };
+  return h;
+}
+
+test("a worktree space is moved under its main checkout in Herdr's order", () => {
+  const h = nested(harness());
+  h.mod.ordered();
+  assert.deepEqual(JSON.parse(JSON.stringify(h.commands)), [
+    { name: "space.move", args: { id: "main", index: 1 } },
+  ]);
+});
+
+test("the moves stop once Herdr's order is the nested one", () => {
+  const h = nested(harness());
+  h.mod.ordered();
+  // Herdr's order is now the nested one.
+  h.live.spaces = [
+    { id: "main", name: "repo", folder: "/repo", tabs: [] },
+    { id: "tree", name: "feature", folder: "/tree", tabs: [] },
+  ];
+  h.commands.length = 0;
+  h.mod.ordered();
+  assert.deepEqual(h.commands, [], "nothing left to move");
+});
+
+test("a move that did not reach Herdr is tried again after a second", () => {
+  const h = nested(harness());
+  h.live.machines = [{ name: null, layout: "ready" }];
+  let now = 1000;
+  vm.runInContext("Date", h.context).now = () => now;
+  h.mod.ordered();
+  assert.equal(h.commands.length, 1);
+  h.mod.ordered();
+  assert.equal(h.commands.length, 1, "not on every redraw");
+  now += 2000;
+  h.mod.ordered();
+  assert.equal(h.commands.length, 2, "tried again once the machine answers");
+});
+
+test("spaces of another machine keep their own block", () => {
+  const h = harness();
+  h.live.spaces = [
+    { id: "remote", name: "remote", folder: "/tree", machine: "server", tabs: [] },
+    { id: "main", name: "repo", folder: "/repo", tabs: [] },
+  ];
+  for (const s of h.live.spaces) h.mod.shown.add(s.id);
+  h.mod.git['[null,"/repo"]'] = { repo: '[null,"/repo/.git"]', linked: false, branch: "main" };
+  h.mod.git['["server","/tree"]'] = { repo: '["server","/repo/.git"]', linked: true, branch: "feature" };
+  h.mod.ordered();
+  assert.deepEqual(h.commands, [], "a worktree of another machine is not moved here");
 });

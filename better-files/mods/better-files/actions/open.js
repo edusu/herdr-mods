@@ -125,7 +125,7 @@ export const openMethods = {
       context: JSON.stringify(source),
       root: target.top,
       on: target.on ?? null,
-      path: target.path.slice(target.top.length + 1),
+      path: target.relative,
       scope: target.staged ? "staged" : "unstaged",
       at: Date.now(),
     };

@@ -6,16 +6,16 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const dir = path.join(__dirname, '../mods/branch-pr');
-const FILES = ['settings.js', 'github/model.js', 'views/ui.js', 'state/saved.js', 'github/discovery.js', 'github/reads.js', 'actions/menus.js', 'actions/agents.js', 'actions/changes.js', 'actions/worktrees.js', 'views/list.js', 'views/detail.js', 'views/conversation.js', 'views/checks.js', 'views/worktrees.js', 'views/files.js', 'main.js'];
+const FILES = ['settings.js', 'file-icons.js', 'github/model.js', 'views/ui.js', 'state/saved.js', 'github/discovery.js', 'github/reads.js', 'actions/menus.js', 'actions/agents.js', 'actions/changes.js', 'actions/worktrees.js', 'views/list.js', 'views/detail.js', 'views/conversation.js', 'views/checks.js', 'views/worktrees.js', 'views/files.js', 'main.js'];
 const source = FILES.map((f) => fs.readFileSync(path.join(dir, f), 'utf8'))
   .join('\n')
   .replace(/^import\s+[\s\S]*?;$/gm, '')
   .replace(/^export default (\w+);$/m, 'globalThis.Mod = $1;')
   .replace(/^export /gm, '')
-  + '\nObject.assign(globalThis, { authorsOf, repoUrl, who, agentName });';
+  + '\nObject.assign(globalThis, { authorsOf, repoUrl, who, agentName, slug });';
 
-function harness({ storage = new Map(), exec, hc, known = [] } = {}) {
-  const pending = [], timers = [], after = [], ran = [], sent = [], opened = [];
+function harness({ storage = new Map(), exec, hc, known = [], home = '/app' } = {}) {
+  const pending = [], timers = [], after = [], ran = [], sent = [], opened = [], execCalls = [];
   const cx = { focus_handle: () => ({ focus() {} }), stop_propagation() {}, notify() {}, open_url: (u) => opened.push(u), write_to_clipboard() {}, spawn(fn) { pending.push(fn(cx)); }, timer: { every(_ms, fn) { timers.push(fn); }, after(_ms, fn) { after.push(fn); } } };
   function el() {
     const data = { nodes: [], handlers: {} };
@@ -40,18 +40,21 @@ function harness({ storage = new Map(), exec, hc, known = [] } = {}) {
   const state = ({ value = '' } = {}) => ({ text: value, value() { return this.text; }, set_value(v) { this.text = v; }, handlers: {}, on(e, f) { this.handlers[e] = f; }, focus() {}, set_selected_range(r) { this.selected = r; } });
   const live = { spaces: [], panes: [], agents: [], shared: {} };
   const context = {
-    View: class {}, div: el, svg: el, v_flex: el, h_flex: el,
+    View: class {}, div: el, svg: (p) => { const e = el(); e.svgPath = p; return e; }, image: (p) => el().child(`image:${p}`), v_flex: el, h_flex: el,
     Popover: { new: (id) => el().id(id) }, Input: { new: () => el() }, Textarea: { new: () => el() },
     TextView: { markdown: (_id, text) => el().child(text) },
     InputState: { new: state }, TextareaState: { new: state },
     spaces: () => live.spaces, panes: () => live.panes, agents: () => live.agents,
-    exec: exec ?? (async () => ({ code: 1, stdout: '', stderr: '' })),
+    exec: async (...args) => {
+      execCalls.push(args);
+      return exec ? exec(...args) : { code: 1, stdout: '', stderr: '' };
+    },
     hc: hc ?? (async (args) => { sent.push(args); return { code: 0, stdout: '', stderr: '' }; }),
     run: (name, args) => ran.push([name, args]),
     openOverlay: (spec) => ran.push(['overlay', spec]),
     shared: (k) => live.shared[k], setShared: (k, v) => { live.shared[k] = v; },
-    home: () => '/home/sam', appHome: () => '/app', theme: () => new Proxy({}, { get: (_t, k) => String(k) }),
-    layout: () => live.layout, settings: () => ({ font_family: 'Code' }), readTextFile: async () => null,
+    home: () => '/home/sam', appHome: () => home, watchFolder: () => new Promise(() => {}), theme: () => new Proxy({}, { get: (_t, k) => String(k) }),
+    layout: () => live.layout, settings: () => ({ font_family: 'Code' }), readTextFile: async (file) => (home === '/app' || !fs.existsSync(file) ? null : fs.readFileSync(file, 'utf8')),
     
     nextCommand: () => new Promise(() => {}), knownAgents: async () => known,
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
@@ -63,10 +66,11 @@ function harness({ storage = new Map(), exec, hc, known = [] } = {}) {
   mod.init({}, cx);
   pending.length = 0;
   mod.repo = 'owner/repo'; mod.sp = { id: 'space', folder: '/repo' }; mod.spaceKey = 'space'; mod.branchLoaded = true; mod.listLoaded = true;
-  return { mod, cx, live, storage, ran, sent, opened, context, tick: () => { for (const fn of timers) fn(cx); }, fireAfter: () => { for (const fn of after.splice(0)) fn(cx); }, flush: async () => { while (pending.length) await Promise.all(pending.splice(0)); } };
+  return { mod, cx, live, storage, ran, sent, opened, execCalls, context, tick: () => { for (const fn of timers) fn(cx); }, fireAfter: () => { for (const fn of after.splice(0)) fn(cx); }, flush: async () => { while (pending.length) await Promise.all(pending.splice(0)); } };
 }
 const same = (actual, expected) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected);
 const find = (node, id) => (node?.elementId === id ? node : node?.nodes?.map((n) => find(n, id)).find(Boolean));
+const svgs = (node) => (typeof node === 'string' || !node ? [] : [node.svgPath, ...(node.nodes ?? []).flatMap(svgs)].filter(Boolean));
 const strings = (node) => (typeof node === 'string' ? node : (node?.nodes ?? []).map(strings).join(' '));
 const click = (tree, id, h, event = {}) => { const node = find(tree, id); assert.ok(node, `no ${id}`); assert.ok(node.handlers.click, `${id} isn't clickable`); node.handlers.click(event, h.cx); };
 
@@ -981,7 +985,7 @@ test('a PR\'s worktrees are listed and a click switches to or opens their space'
   let tree = h.mod.render();
   assert.match(strings(find(tree, 'pr-worktree-row-0')), /PR-2\s+fix/);
   find(tree, 'pr-worktree-row-0').handlers.click({}, h.cx);
-  assert.equal(h.ran.at(-1)[0], 'space.new');
+  same(h.ran.at(-1), ['space.new', { folder: '/wt/PR-2', machine: '', tab: 'PR-2' }]);
   h.live.spaces = [{ id: 'wt', folder: '/wt/PR-2' }];
   tree = h.mod.render();
   find(tree, 'pr-worktree-row-0').handlers.click({}, h.cx);
@@ -994,7 +998,7 @@ test('a new worktree fetches the verified head and opens as a space', async () =
   const exec = async (bin, args) => {
     const line = `${bin} ${args.join(' ')}`;
     log.push(line);
-    if (line.includes('check-ref-format')) return { code: 0, stdout: 'fix\n' };
+    if (line.includes('check-ref-format')) return { code: 0, stdout: `${args.at(-1)}\n` };
     if (line.includes('remote get-url')) return { code: 0, stdout: 'git@github.com:owner/repo.git\n' };
     if (line.endsWith('git remote')) return { code: 0, stdout: 'origin\n' };
     if (line.includes('show-ref')) return { code: 1, stdout: '' };
@@ -1003,25 +1007,28 @@ test('a new worktree fetches the verified head and opens as a space', async () =
     return { code: 0, stdout: '' };
   };
   const h = harness({ exec });
-  h.mod.pr = PR({ headRefOid: head });
-  h.mod.api = async () => PR({ headRefOid: head });
+  h.mod.pr = PR({ headRefOid: head, headRefName: 'fix/你好' });
+  h.mod.api = async () => PR({ headRefOid: head, headRefName: 'fix/你好' });
   h.mod.showWorktree(h.cx); await h.flush();
-  assert.equal(h.mod.worktreeForm.branch.value(), 'fix');
+  assert.equal(h.mod.worktreeForm.branch.value(), 'fix/你好');
   assert.equal(h.mod.worktreeForm.name.value(), 'PR-2');
   click(h.mod.render(), 'pr-worktree-submit', h); await h.flush();
   assert.ok(log.some((l) => l.includes('fetch --no-tags -- git@github.com:owner/repo.git refs/pull/2/head')));
-  assert.ok(log.some((l) => l.includes(`worktree add -b fix -- /home/sam/.herdr/worktrees/owner-repo/PR-2 ${head}`)));
-  assert.ok(log.some((l) => l.includes('config branch.fix.herdr-pr owner/repo#2')));
+  assert.ok(log.some((l) => l.includes(`worktree add -b fix/你好 -- /home/sam/.herdr/worktrees/owner-repo/PR-2 ${head}`)));
+  assert.ok(log.some((l) => l.includes('config branch.fix/你好.herdr-pr owner/repo#2')));
+  const add = h.execCalls.find(([, args]) => args[0] === 'worktree' && args[1] === 'add');
+  assert.equal(add[2].timeout, 600_000);
   assert.equal(h.ran.at(-1)[0], 'space.new');
+  assert.equal(h.ran.at(-1)[1].machine, '');
   assert.equal(h.mod.worktreeForm, null);
 });
 
-test('a worktree name with a path in it is refused, and a moved PR stops the checkout', async () => {
+test('a blank worktree name is refused, and a moved PR stops the checkout', async () => {
   const log = [];
   const exec = async (bin, args) => {
     const line = `${bin} ${args.join(' ')}`;
     log.push(line);
-    if (line.includes('check-ref-format')) return { code: 0, stdout: 'fix\n' };
+    if (line.includes('check-ref-format')) return { code: 0, stdout: `${args.at(-1)}\n` };
     if (line.includes('remote get-url')) return { code: 0, stdout: 'git@github.com:owner/repo.git\n' };
     if (line.endsWith('git remote')) return { code: 0, stdout: 'origin\n' };
     if (line.includes('show-ref')) return { code: 1, stdout: '' };
@@ -1031,14 +1038,56 @@ test('a worktree name with a path in it is refused, and a moved PR stops the che
   const h = harness({ exec });
   h.mod.pr = PR();
   h.mod.showWorktree(h.cx); await h.flush();
-  h.mod.worktreeForm.name.set_value('../evil');
+  h.mod.worktreeForm.name.set_value('');
   h.mod.createWorktree(h.cx); await h.flush();
-  assert.match(h.mod.worktreeForm.error, /letters, numbers/);
+  assert.match(h.mod.worktreeForm.error, /Enter a worktree name/);
   h.mod.worktreeForm.name.set_value('PR-2');
   h.mod.api = async () => PR({ headRefOid: 'a'.repeat(40) });
   h.mod.createWorktree(h.cx); await h.flush();
   assert.match(h.mod.worktreeForm.error, /changed while fetching/);
   assert.equal(log.some((l) => l.includes('worktree add')), false);
+});
+
+test('worktree folder slugs keep Unicode and give symbol-only names stable unique paths', () => {
+  const slug = harness().context.slug;
+  assert.equal(slug('fix/你好'), 'fix-你好');
+  assert.equal(slug('e\u0301'), slug('é'));
+  assert.match(slug('🔥'), /^branch-[0-9a-f]{8}$/);
+  assert.notEqual(slug('🔥'), slug('✨'));
+});
+
+test('a custom Herdr worktree folder and symbol-only names make a safe path', async () => {
+  const home = fs.mkdtempSync(path.join(require('os').tmpdir(), 'branch-pr-settings-'));
+  fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ worktrees: { directory: '~/Developer/trees' } }));
+  const head = 'c'.repeat(40);
+  const log = [];
+  const exec = async (bin, args) => {
+    const line = `${bin} ${args.join(' ')}`;
+    log.push(line);
+    if (line.includes('check-ref-format')) return { code: 0, stdout: `${args.at(-1)}\n` };
+    if (line.includes('remote get-url')) return { code: 0, stdout: 'git@github.com:owner/repo.git\n' };
+    if (line.endsWith('git remote')) return { code: 0, stdout: 'origin\n' };
+    if (line.includes('show-ref')) return { code: 1, stdout: '' };
+    if (line.includes('rev-parse')) return { code: 0, stdout: `${head}\n` };
+    if (line.includes('--get-regexp') || line.includes('worktree list')) return { code: 1, stdout: '' };
+    return { code: 0, stdout: '' };
+  };
+  try {
+    const h = harness({ exec, home });
+    h.mod.pr = PR({ headRefOid: head, headRefName: '修复/你好' });
+    h.mod.api = async () => PR({ headRefOid: head, headRefName: '修复/你好' });
+    h.mod.showWorktree(h.cx);
+    await h.flush();
+    h.mod.worktreeForm.name.set_value('🔥');
+    h.mod.createWorktree(h.cx);
+    await h.flush();
+    const folder = h.context.slug('🔥');
+    assert.ok(log.some((line) => line.includes(
+      `worktree add -b 修复/你好 -- /home/sam/Developer/trees/owner-repo/${folder} ${head}`,
+    )));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
 });
 
 // A file's diff opens in Better Changes' centre tab; Branch PR has none of its own.
@@ -1059,7 +1108,9 @@ test('a merged PR shows a Merged badge where Actions would be', () => {
 });
 
 const FILE = { filename: 'src/a.go', additions: 3, deletions: 1, patch: '@@ -1 +1 @@\n-a\n+b' };
-const filesHarness = () => harness({ exec: async (_bin, [request]) => ({ code: 0, stdout: JSON.stringify(JSON.parse(request).action === 'files' ? [[FILE]] : {}), stderr: '' }) });
+// The table is read by a task started in init, which the harness doesn't wait for, so wait for it a bounded while.
+const iconsRead = async (h) => { for (let i = 0; i < 100 && !h.mod.fileIcons; i++) await new Promise((done) => setImmediate(done)); };
+const filesHarness = (options = {}) => harness({ ...options, exec: async (_bin, [request]) => ({ code: 0, stdout: JSON.stringify(JSON.parse(request).action === 'files' ? [[FILE]] : {}), stderr: '' }) });
 
 test('the Files tab counts the files, lists them, and opens one on GitHub without Better Changes', async () => {
   const h = filesHarness();
@@ -1135,4 +1186,82 @@ test('another mod opens a PR of this repository through shared state', () => {
   assert.equal(m.openRequest({ ...req, at: now - 20000 }, null, ['acme/app'], now), null, 'too old');
   for (const number of [0, -1, 1.5, '7']) assert.equal(m.openRequest({ ...req, number }, null, ['acme/app'], now), null, String(number));
   assert.equal(m.openRequest(null, null, ['acme/app'], now), null);
+});
+
+test("with Better Icons installed, the Files tab shows each file's and folder's colour icon", async () => {
+  const h = filesHarness({ home: path.join(__dirname, '../../better-icons') });
+  await iconsRead(h);
+  assert.ok(h.mod.fileIcons, 'the table loaded');
+  h.mod.pr = PR();
+  h.mod.selectSection('files', h.cx);
+  await h.flush();
+  let tree = h.mod.render();
+  assert.match(strings(find(tree, 'pr-file-src/a.go')), /image:mods\/better-icons\/icons\/go\.svg/);
+  assert.match(strings(find(tree, 'pr-folder-src')), /image:mods\/better-icons\/icons\/folder-src-open\.svg/);
+  click(tree, 'pr-folder-src', h);
+  assert.match(strings(find(h.mod.render(), 'pr-folder-src')), /image:mods\/better-icons\/icons\/folder-src\.svg/);
+  const plain = filesHarness();
+  await iconsRead(plain);
+  assert.equal(plain.mod.fileIcons, null, 'no table without Better Icons');
+  plain.mod.pr = PR();
+  plain.mod.selectSection('files', plain.cx);
+  await plain.flush();
+  tree = plain.mod.render();
+  assert.doesNotMatch(strings(find(tree, 'pr-file-src/a.go')), /image:/);
+  assert.doesNotMatch(strings(find(tree, 'pr-folder-src')), /image:/);
+  assert.ok(!svgs(find(tree, 'pr-folder-src')).includes('mods/branch-pr/icons/file.svg'), 'a folder gets no file icon');
+  assert.ok(svgs(find(tree, 'pr-file-src/a.go')).includes('mods/branch-pr/icons/file.svg'), 'a file keeps the plain icon');
+});
+
+test("on a light theme, the Files tab takes Better Icons' light pictures", async () => {
+  const toml = { filename: 'Cargo.toml', additions: 1, deletions: 0, patch: '@@ -0,0 +1 @@\n+a' };
+  const rules = { filename: '.cursor/rules.md', additions: 1, deletions: 0, patch: '@@ -0,0 +1 @@\n+a' };
+  const h = harness({ home: path.join(__dirname, '../../better-icons'), exec: async (_bin, [request]) => ({ code: 0, stdout: JSON.stringify(JSON.parse(request).action === 'files' ? [[toml, rules]] : {}), stderr: '' }) });
+  await iconsRead(h);
+  h.mod.pr = PR();
+  h.mod.selectSection('files', h.cx);
+  await h.flush();
+  assert.match(strings(find(h.mod.render(), 'pr-file-Cargo.toml')), /image:mods\/better-icons\/icons\/toml\.svg/);
+  h.context.theme = () => new Proxy({ background: '#fbf7f0' }, { get: (t, k) => t[k] ?? String(k) });
+  assert.match(strings(find(h.mod.render(), 'pr-file-Cargo.toml')), /image:mods\/better-icons\/icons\/toml_light\.svg/);
+  let tree = h.mod.render();
+  assert.match(strings(find(tree, 'pr-folder-.cursor')), /image:mods\/better-icons\/icons\/folder-cursor-open_light\.svg/, 'an open folder takes its light open picture');
+  click(tree, 'pr-folder-.cursor', h);
+  tree = h.mod.render();
+  assert.match(strings(find(tree, 'pr-folder-.cursor')), /image:mods\/better-icons\/icons\/folder-cursor_light\.svg/, 'a closed folder takes its light picture');
+});
+
+test('Better Search can ask for a PR: it opens once, in the space it was asked for, while fresh', () => {
+  const h = harness();
+  const opened = [];
+  h.mod.openPR = (number, _cx, repo) => opened.push([number, repo]);
+  h.live.spaces = [{ id: 'space', active: true, folder: '/repo', branch: null, machine: null, tabs: [] }];
+  h.mod.spaceKey = 'local:space:/repo:';
+  h.mod.reopenSaved = true;
+  h.live.shared['branch-pr.open'] = { space: 'other', number: 3, repo: 'owner/repo', at: Date.now() };
+  h.tick();
+  same(opened, []);
+  h.live.shared['branch-pr.open'] = { space: 'space', number: 7, repo: 'fork/repo', at: Date.now() };
+  h.tick();
+  h.tick();
+  same(opened, [[7, 'fork/repo']]);
+  assert.equal(h.mod.reopenSaved, false, 'what was open last time stays shut');
+  assert.equal(h.mod.pr, null);
+  assert.match(strings(h.mod.render()), /Loading #7…/, 'busy until it arrives');
+  h.live.shared['branch-pr.open'] = { space: 'space', number: 8, repo: 'owner/repo', at: Date.now() - 60000 };
+  h.tick();
+  same(opened, [[7, 'fork/repo']]);
+});
+
+test('an ask in a space the panel has not caught up with yet follows the space first, then opens', () => {
+  const h = harness();
+  const opened = [];
+  h.mod.openPR = (number) => opened.push(number);
+  h.live.spaces = [{ id: 'space', active: true, folder: '/repo', branch: null, machine: null, tabs: [] }];
+  h.mod.spaceKey = 'stale';
+  h.live.shared['branch-pr.open'] = { space: 'space', number: 9, repo: 'owner/repo', at: Date.now() };
+  h.mod.takeAsk(h.cx);
+  assert.equal(h.mod.spaceKey, 'local:space:/repo:');
+  same(opened, [9]);
+  assert.equal(h.mod.opening.number, 9, 'the space change did not clear what is loading');
 });

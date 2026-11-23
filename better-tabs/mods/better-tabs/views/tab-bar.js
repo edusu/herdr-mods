@@ -33,15 +33,45 @@ export const tabBarMethods = {
 
   tabIcon(tab, ps, t) {
     const mine = ps.filter((p) => p.tab === tab.id);
-    const program = (mine.find((p) => p.program?.agent) ?? mine[0])?.program;
-    if (program?.icon) {
-      return program.tint
-        ? svg(program.icon).size(14).text_color(t.muted)
-        : image(program.icon).size(14);
+    const draw = (pic) =>
+      pic?.icon ? (pic.tint ? svg(pic.icon).size(14).text_color(t.muted) : image(pic.icon).size(14)) : null;
+    // A program pane leads, picked the way Better Sidebar's lead() picks it: an agent, else the
+    // focused one, else the first. So both show the same icon for a tab.
+    const progs = mine.filter((p) => !p.mod);
+    const program = (progs.find((p) => p.program?.agent) ?? progs.find((p) => p.focused) ?? progs[0])?.program;
+    if (program?.icon) return draw(program);
+    // Mod panes carry no program. Any of them may publish its own icon in shared("pane-heads"), as
+    // a Better Files or Better Changes tab does for its file, with color: true for a full-colour
+    // picture; else the mod may publish an icon for itself.
+    const heads = shared("pane-heads") ?? {};
+    const head = heads[mine.find((p) => p.mod && heads[p.pane]?.icon)?.pane];
+    if (head) return draw({ icon: head.icon, tint: !head.color });
+    return draw({ icon: shared("mod-icons")?.[mine.find((p) => p.mod)?.mod], tint: true });
+  },
+
+  // Smooth touchpad gestures can emit many small events. Accumulate them into
+  // one tab step at a time, while a wheel notch switches immediately.
+  wheelTabs(event) {
+    if (event.delta_lines) {
+      if (event.delta_lines.y) run(event.delta_lines.y > 0 ? "tab.prev" : "tab.next");
+      return;
     }
-    // Mod panes carry no program, but a mod may publish an icon for itself.
-    const modIcon = shared("mod-icons")?.[mine.find((p) => p.mod)?.mod];
-    return modIcon ? svg(modIcon).size(14).text_color(t.muted) : null;
+    const swipe = this.swipe;
+    const now = Date.now();
+    if (
+      event.touch_phase === "started" ||
+      now - swipe.at > 250 ||
+      event.delta.y * swipe.acc < 0
+    )
+      Object.assign(swipe, { acc: 0, steps: 0 });
+    swipe.at = now;
+    swipe.acc += event.delta.y;
+    const step = swipe.steps ? 60 : 20;
+    if (Math.abs(swipe.acc) < step || now - swipe.last < 100) return;
+    swipe.acc -= Math.sign(swipe.acc) * step;
+    swipe.steps++;
+    swipe.last = now;
+    run(event.delta.y > 0 ? "tab.prev" : "tab.next");
   },
 
   tabItem(tab, space, ps, t) {
@@ -174,6 +204,7 @@ export const tabBarMethods = {
         }
       })
       .on_mouse_move((event, cx) => this.movePointer(event, cx))
+      .on_scroll_wheel((event) => this.wheelTabs(event))
       .on_mouse_up("left", (_event, cx) => {
         this.commitTabDrag(cx);
         this.finishActionDrag(cx);

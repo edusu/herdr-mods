@@ -7,6 +7,7 @@
 //   views/tab-bar.js       the bar: tabs, +, toolbar, ⋮
 //   views/menu.js          the ⋮ menu and toolbar action buttons
 //   views/tab-menu.js      a tab's right-click menu
+//   actions/names.js       tabs named after what runs in them
 // actions/ holds the logic with no drawing, views/ui.js the shared look.
 import { View } from "gpui-kit";
 import { shared, setShared, nextCommand, props, notify } from "herdr";
@@ -18,9 +19,10 @@ import { dragMethods, DRAG_KEY, DRAG_TIMEOUT_MS } from "./views/drags.js";
 import { tabBarMethods } from "./views/tab-bar.js";
 import { menuMethods } from "./views/menu.js";
 import { tabMenuMethods } from "./views/tab-menu.js";
+import { nameMethods } from "./actions/names.js";
 
 // Preferences a person may change in the installed mod.json under `settings`.
-const DEFAULT_SETTINGS = { tabs: { max_width: 170, drag_delay: "400ms" }, menu: { width: 240 } };
+const DEFAULT_SETTINGS = { tabs: { max_width: 170, drag_delay: "400ms", auto_name: true }, menu: { width: 240 } };
 
 const DEFAULTS = {
   rememberPanels: { container: "panel", stack: "panel-body" },
@@ -54,10 +56,12 @@ class Tabs extends View {
     cx.spawn(async (cx) => {
       const { settings, problems } = await loadSettings("better-tabs", DEFAULT_SETTINGS);
       this.settings = settings;
+      this.settingsReady = true;
       for (const problem of problems) console.warn(`better-tabs mod.json settings: ${problem}`);
       cx.notify();
     });
     this.tabDrag = null;
+    this.swipe = { acc: 0, steps: 0, at: 0, last: 0 };
     this.panels = {};
     try {
       const saved = JSON.parse(localStorage.getItem("panels") ?? "{}");
@@ -71,6 +75,7 @@ class Tabs extends View {
       this.syncPanel();
       cx.timer.every(300, () => {
         this.syncPanel();
+        this.nameTabs();
         const drag = shared(DRAG_KEY);
         if (drag?.scope === this.toolbarScope() && Date.now() - drag.at > DRAG_TIMEOUT_MS)
           setShared(DRAG_KEY, null);
@@ -109,6 +114,7 @@ Object.assign(
   tabBarMethods,
   menuMethods,
   tabMenuMethods,
+  nameMethods,
 );
 
 export default Tabs;

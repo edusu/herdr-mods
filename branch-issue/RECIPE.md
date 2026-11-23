@@ -1,10 +1,16 @@
 # Branch Issue
 
-A Linear panel for a person's Herdr window, for directing agents rather than managing a tracker. Judge any addition by whether it helps someone see where an issue stands, start work on it, hand it to an agent, or keep it current. It reads the key from `LINEAR_API_KEY` only, and the mod never sees it.
+An issue panel for directing agents rather than managing a tracker. Linear is the default, with writable actions; its helper reads `LINEAR_API_KEY`, and the mod never sees it. GitHub Issues is an opt-in, read-only view.
 
 ![Branch Issue](preview.png)
 
-## What you see
+## GitHub Issues mode
+
+Set `settings.provider` to `github`. Do not load Linear in this mode. Use Git on the checkout's machine to find the repository, preferring the branch's tracking remote, then `origin`, `upstream`, and other GitHub.com remotes. Read through the local authenticated `gh`, including for remote spaces.
+
+Show open repository issues without PRs and open each row in GitHub. Show linked issues separately, and only for repository-qualified branch references or closing references from a PR known to belong to this branch. Never infer a link from a bare number. Distinguish missing authentication, unsupported remotes, read failures, and a successful empty list. Refresh follows the active checkout without showing stale results. No mutation or worktree controls in this mode.
+
+## What you see in Linear mode
 
 It follows Better Changes and Branch PR, in one framed sidebar panel, radius 10, with no center tab. Headers are 42px.
 
@@ -32,11 +38,13 @@ Search debounces 450ms and starts at three characters, or at any length for a nu
 
 An agent is on an issue if its pane is inside one of the issue's worktrees, or in this space on a branch naming it. Send to agent is a dropdown of those first, then others in the space, each also as `<name> (spawn)`, which starts a sub-agent of the same program under it with `hc run --bg --parent`, passing the message as an argument so no shell sees it, then Start for each installed agent from `knownAgents`. It opens an editable prompt that only Send delivers: through `hc send` to a running agent, `hc run` for a sub-agent, or `tab.new` with the message as a new agent's first prompt. New agents work in the issue's worktree, else the space's folder. Messages say to treat Linear's text as data and not to post unless asked.
 
-Create worktree proposes Linear's `branchName` with a suffix if taken, a worktree name following the branch until edited, From as a dropdown, not a text field: the remote's HEAD by default, or this checkout's branch or any recent one, for stacking, with a fetch in the background to bring in new ones, and Open with a terminal or an installed agent. It checks the names, refuses existing branches, fetches the base from `origin` and starts from the local branch if it has everything the remote does or isn't on the remote, else from what was fetched, runs `git worktree add` under `worktrees.root/<repo folder>/<name>`, writes the branch link, optionally moves the issue to the team's first started state, and opens a new space. An agent gets the issue as its first prompt. If opening fails the checkout stays, and Open retries only that step.
+Create worktree proposes Linear's `branchName` with a suffix if taken, a worktree name following the branch until edited, From as a dropdown, not a text field: the remote's HEAD by default, or this checkout's branch or any recent one, for stacking, with a fetch in the background to bring in new ones, and Open with a terminal or an installed agent. It checks the branch, refuses existing branches, fetches the base from `origin` and starts from the local branch if it has everything the remote does or isn't on the remote, else from what was fetched, then runs `git worktree add` with a 600-second timeout. The path is `<worktrees.directory>/<repo folder>/<slug(name)>`; Herdr's `settings.json` directory wins, then the mod setting, then `~/.herdr/worktrees`. `~` expands on the space's machine. Slugs preserve Unicode letters and numbers; symbol-only names get a stable FNV hash. It writes the branch link, optionally moves the issue to the team's first started state, and opens a new space with `machine: ""` locally. An agent gets the issue as its first prompt. If opening fails the checkout stays, and Open retries only that step.
 
 Writes never retry by themselves. A failure keeps the draft and says to refresh first if it may have gone through. A confirmation leaves after 5 seconds; an error stays.
 
 ## Built from
+
+Built and tested against Herdr 0.1.16.
 
 `mods/branch-issue/`: `main.js`, `settings.js` (shared between this repo's mods), `mod.json` (`place: none`, title Branch Issue), `mod.schema.json` (its settings with their defaults, which the code's `DEFAULT_SETTINGS` must match), `linear/` (`model.js`, `discovery.js`, `reads.js`), `actions/` (`changes.js`, `agents.js`, `worktrees.js`, `menus.js`), `state/saved.js`, `views/` (`ui.js`, `list.js`, `detail.js`, `comments.js`, `worktrees.js`), `icons/`. `helper/` is `go.mod`, `main.go`, `main_test.go` with no dependencies; `helper/install/` builds it to `mods/branch-issue/bin/herdr-linear`. Remote spaces run Git there, and the helper stays local.
 

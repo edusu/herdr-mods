@@ -45,12 +45,14 @@ async function harness({ settings = {}, tab = null, panes = [], sharedValues = {
     seq: 1,
   });
   const agents = [agent("t1", "shop", "a", "idle"), agent("t2", "docs", "c", "done"), agent("t3", "shop", "b", "blocked")];
+  live.agents = agents;
   const cx = { notify() {}, stop_propagation() {}, timer: { every() {} }, focus_handle: () => ({}), spawn: (fn) => pending.push(fn(cx)) };
   const context = {
     Date, JSON, Map, Set, Math, console,
     View: class {},
-    div: element, svg: (p) => element().child(`svg:${p}`), image: element, v_flex: element, h_flex: element,
-    Popover: { new: element },
+    div: element, svg: (p) => element().child(`svg:${p}`), image: (p) => element().child(`image:${p}`), v_flex: element, h_flex: element,
+    Popover: { new: (id) => element().id(id) },
+    ScrollHandle: { new: () => ({ scroll_to_item() {} }) },
     spaces: () => spaces,
     agents: () => agents,
     terminals: () => [],
@@ -67,6 +69,7 @@ async function harness({ settings = {}, tab = null, panes = [], sharedValues = {
     run() {},
     openOverlay() {},
     hc: async () => ({ code: 0, stdout: '{"machines":[]}' }),
+    checking: () => false,
     watchFolder: async () => { throw Error("No watcher in tests"); },
     exec: async () => ({ code: 1, stdout: "" }),
     appHome: () => "/app",
@@ -75,7 +78,7 @@ async function harness({ settings = {}, tab = null, panes = [], sharedValues = {
   };
   vm.createContext(context);
   // Each file in its own scope, as a module is; its exports become globals for the next.
-  for (const file of ["settings.js", "git/pr-status.js", "git/checkouts.js", "views/find-node.js", "views/ui.js", "views/spaces.js", "views/agents.js", "views/lists.js"]) {
+  for (const file of ["settings.js", "defaults.js", "git/pr-status.js", "git/checkouts.js", "views/find-node.js", "views/ui.js", "views/spaces.js", "views/agents.js", "views/lists.js"]) {
     const source = fs.readFileSync(path.join(runtime, file), "utf8").replace(/^import\s+[\s\S]*?;\n/gm, "");
     const names = [...source.matchAll(/^export (?:async )?(?:class|function|const) (\w+)/gm)].map((m) => m[1]);
     vm.runInContext(`Object.assign(globalThis, (() => { ${source.replaceAll("export ", "")}\nreturn { ${names.join(", ")} }; })());`, context);
@@ -126,13 +129,51 @@ test("combined off puts spaces above agents, without tabs", async () => {
 });
 
 test("in Spaces a pinned agent sits above every space", async () => {
-  const { mod } = await harness();
-  mod.agents.setPins(["t3"]);
+  const { mod, live } = await harness();
+  live.agents.find((a) => a.address === "t3").pinned = true;
   const drawn = ids(mod.render()).filter((id) => /^ag-t\d$/.test(id));
   assert.deepEqual(drawn, ["ag-t3", "ag-t1", "ag-t2"]);
   const order = ids(mod.render()).filter((id) => /^(space-(shop|docs)|ag-t\d)$/.test(id));
   assert.deepEqual(order, ["ag-t3", "space-shop", "ag-t1", "space-docs", "ag-t2"]);
 
+});
+
+test("a mod's tab shows its pane's own published icon before the mod's, in colour when it says so", async () => {
+  const panes = [{ pane: "pd", tab: "d", mod: "better-files" }];
+  const modIcons = { "better-files": "mods/better-files/icons/file.svg" };
+  const { mod } = await harness({
+    panes,
+    sharedValues: { "mod-icons": modIcons, "pane-heads": { pd: { icon: "mods/better-icons/icons/javascript.svg", color: true } } },
+  });
+  const row = text(find(mod.render(), "tab-d"));
+  assert.match(row, /image:mods\/better-icons\/icons\/javascript\.svg/);
+  assert.doesNotMatch(row, /svg:mods\/better-files/);
+  const { mod: plain } = await harness({
+    panes,
+    sharedValues: { "mod-icons": modIcons, "pane-heads": { pd: { icon: "mods/better-changes/icons/file.svg" } } },
+  });
+  assert.match(text(find(plain.render(), "tab-d")), /svg:mods\/better-changes\/icons\/file\.svg/);
+  const { mod: other } = await harness({
+    panes,
+    sharedValues: { "mod-icons": modIcons, "pane-heads": { p9: { icon: "mods/better-icons/icons/javascript.svg", color: true } } },
+  });
+  assert.match(text(find(other.render(), "tab-d")), /svg:mods\/better-files\/icons\/file\.svg/);
+});
+
+test("a split mod tab shows the head any of its panes published", async () => {
+  const { mod } = await harness({
+    panes: [
+      { pane: "pa", tab: "d", mod: "branch-pr" },
+      { pane: "pd", tab: "d", mod: "better-files" },
+    ],
+    sharedValues: {
+      "mod-icons": { "branch-pr": "mods/branch-pr/pull-request.svg" },
+      "pane-heads": { pd: { icon: "mods/better-icons/icons/javascript.svg", color: true } },
+    },
+  });
+  const row = text(find(mod.render(), "tab-d"));
+  assert.match(row, /image:mods\/better-icons\/icons\/javascript\.svg/);
+  assert.doesNotMatch(row, /pull-request/);
 });
 
 test("an Agents row reads its tab's title, then its space", async () => {
@@ -170,3 +211,15 @@ test("font_size scales text and grows rows; scale sizes icons and heights; the d
   assert.equal(rowPx(26), 33); assert.equal(iconPx(15), 19); assert.ok(Number.isInteger(rowPx(29)));
   assert.equal(context.SIZE.icon, 33);
 });
+
+test("the Spaces tab offers the space sort beside New space, and Agents its own sort", async () => {
+  const { mod } = await harness({ tab: "spaces" });
+  const tree = mod.render();
+  assert.ok(find(tree, "space-sort-menu"), "space sort on Spaces");
+  assert.ok(find(tree, "space-new"));
+  const { mod: agentsTab } = await harness({ tab: "agents" });
+  const other = agentsTab.render();
+  assert.equal(find(other, "space-sort-menu"), undefined);
+  assert.ok(find(other, "ag-sort-menu"));
+});
+

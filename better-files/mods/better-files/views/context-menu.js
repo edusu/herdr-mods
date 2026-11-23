@@ -1,8 +1,9 @@
 // The right-click menu: its own small copy of this mod, in a popup at the pointer.
 import { div } from "gpui-kit";
 import { v_flex } from "gpui-base";
-import { closeOverlay, props, shared, theme } from "herdr";
-import { foundEditors } from "../actions/outside.js";
+import { closeOverlay, props, shared, theme, window } from "herdr";
+import { editorId, foundEditors, ownFileManager } from "../actions/outside.js";
+import { revealLabel } from "../files/shell.js";
 import { agentName } from "../actions/agents.js";
 import { TEXT, rowPx } from "./ui.js";
 
@@ -19,7 +20,7 @@ export const contextMenuMethods = {
       ]);
     groups.push([
       ...editors.map((e) => ({
-        id: `editor-${e.bundle}`,
+        id: `editor-${editorId(e)}`,
         label: `Open in ${e.name}`,
         run: () => this.openInEditor(e, target.path),
       })),
@@ -27,7 +28,7 @@ export const contextMenuMethods = {
         ? [{ id: "default", label: "Open in default app", run: () => this.openWithDefault(target.path) }]
         : []),
       ...(local
-        ? [{ id: "reveal", label: "Show in Finder", run: () => this.revealInFinder(target.path) }]
+        ? [{ id: "reveal", label: revealLabel(window()?.platform, ownFileManager()), run: () => this.reveal(target.path) }]
         : []),
     ]);
     if (!target.dir && target.changed && shared("better-files.has-changes"))

@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const dir = path.join(__dirname, '../mods/branch-issue');
-const FILES = ['settings.js', 'linear/model.js', 'views/ui.js', 'state/saved.js', 'linear/discovery.js', 'linear/reads.js', 'actions/menus.js', 'actions/agents.js', 'actions/changes.js', 'actions/worktrees.js', 'views/list.js', 'views/detail.js', 'views/comments.js', 'views/worktrees.js', 'main.js'];
+const FILES = ['settings.js', 'linear/model.js', 'views/ui.js', 'state/saved.js', 'linear/discovery.js', 'linear/reads.js', 'actions/menus.js', 'actions/agents.js', 'actions/changes.js', 'actions/worktrees.js', 'views/list.js', 'views/detail.js', 'views/comments.js', 'views/worktrees.js', 'github/panel.js', 'main.js'];
 const source = FILES.map((f) => fs.readFileSync(path.join(dir, f), 'utf8'))
   .join('\n')
   .replace(/^import\s+[\s\S]*?;$/gm, '')
@@ -14,18 +14,29 @@ const source = FILES.map((f) => fs.readFileSync(path.join(dir, f), 'utf8'))
   .replace(/^export /gm, '')
   + '\nObject.assign(globalThis, { person, who, agentName, slug, folderName });';
 
-function harness({ storage = new Map(), exec, hc, known = [] } = {}) {
-  const pending = [], timers = [], after = [], ran = [], sent = [], opened = [];
+function harness({ storage = new Map(), exec, hc, known = [], appHome = '/app', checkout, readTextFile, readGitHubIssues, singleUse = false } = {}) {
+  let receiveCommand;
+  const pending = [], timers = [], after = [], ran = [], sent = [], opened = [], execCalls = [];
   const cx = { focus_handle: () => ({ focus() {} }), stop_propagation() {}, notify() {}, open_url: (u) => opened.push(u), write_to_clipboard() {}, spawn(fn) { pending.push(fn(cx)); }, timer: { every(_ms, fn) { timers.push(fn); }, after(_ms, fn) { after.push(fn); } } };
+  const attached = new WeakMap();
   function el() {
     const data = { nodes: [], handlers: {} };
     const proxy = new Proxy(data, {
       get(t, k) {
         if (k in t) return t[k];
-        if (k === 'child' || k === 'trigger' || k === 'content') return (c) => { t.nodes.push(c); return proxy; };
-        if (k === 'children') return (c) => { t.nodes.push(...c); return proxy; };
-        if (k === 'when') return (b, f) => { if (b) f(proxy); return proxy; };
         return (...a) => {
+          assert.ok(!attached.get(proxy), `cannot mutate attached element ${t.elementId ?? '(unnamed)'}`);
+          if (k === 'child' || k === 'children' || k === 'trigger' || k === 'content') {
+            const children = k === 'children' ? a[0] : a;
+            for (const child of children) {
+              if (attached.has(child)) {
+                assert.ok(!attached.get(child), `cannot reuse attached element ${child.elementId ?? '(unnamed)'}`);
+                attached.set(child, true);
+              }
+              t.nodes.push(child);
+            }
+          }
+          if (k === 'when' && a[0]) a[1](proxy);
           if (k === 'id') t.elementId = a[0];
           if (k === 'on_click') t.handlers.click = a[0];
           if (k === 'on_key_down') t.handlers.key = a[0];
@@ -35,22 +46,33 @@ function harness({ storage = new Map(), exec, hc, known = [] } = {}) {
         };
       },
     });
+    if (singleUse) attached.set(proxy, false);
     return proxy;
   }
   const state = ({ value = '' } = {}) => ({ text: value, value() { return this.text; }, set_value(v) { this.text = v; }, handlers: {}, on(e, f) { this.handlers[e] = f; }, focus() {}, set_selected_range(r) { this.selected = r; } });
-  const live = { spaces: [], panes: [], agents: [] };
+  const live = { spaces: checkout ? [checkout] : [], panes: [], agents: [], shared: {} };
   const context = {
     View: class {}, div: el, svg: el, v_flex: el, h_flex: el,
     Popover: { new: (id) => el().id(id) }, Input: { new: () => el() }, Textarea: { new: () => el() },
     TextView: { markdown: (_id, text) => el().child(text) },
     InputState: { new: state }, TextareaState: { new: state },
     spaces: () => live.spaces, panes: () => live.panes, agents: () => live.agents,
-    exec: exec ?? (async () => ({ code: 1, stdout: '', stderr: '' })),
+    exec: async (...args) => {
+      execCalls.push(args);
+      return exec ? exec(...args) : { code: 1, stdout: '', stderr: '' };
+    },
     hc: hc ?? (async (args) => { sent.push(args); return { code: 0, stdout: '', stderr: '' }; }),
     run: (name, args) => ran.push([name, args]),
-    home: () => '/home/sam', appHome: () => '/app', theme: () => new Proxy({}, { get: (_t, k) => `#${String(k)}` }),
-    layout: () => live.layout, settings: () => ({ font_family: 'Code' }), readTextFile: async () => null,
-    nextCommand: () => new Promise(() => {}), knownAgents: async () => known,
+    shared: (k) => live.shared[k], setShared: (k, v) => { live.shared[k] = v; },
+    home: () => '/home/sam', appHome: () => appHome, theme: () => new Proxy({}, { get: (_t, k) => `#${String(k)}` }),
+    layout: () => live.layout, settings: () => ({ font_family: 'Code' }),
+    // Herdr's settings.json answers (from a real file when appHome is a temp folder); the mod's
+    // own settings stay pending unless a test checks out, so tests set settingsReady themselves.
+    readTextFile: readTextFile ?? ((file) => file === `${appHome}/settings.json`
+      ? Promise.resolve(appHome !== '/app' && fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null)
+      : checkout ? Promise.resolve(null) : new Promise(() => {})),
+    nextCommand: () => new Promise((resolve) => { receiveCommand = resolve; }), knownAgents: async () => known,
+    readGitHubIssues,
     localStorage: { getItem: (k) => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) },
     console,
   };
@@ -58,9 +80,14 @@ function harness({ storage = new Map(), exec, hc, known = [] } = {}) {
   vm.runInContext(source, context);
   const mod = new context.Mod();
   mod.init({}, cx);
-  pending.length = 0;
-  mod.sp = { id: 'space', folder: '/repo' }; mod.spaceKey = 'space'; mod.branchLoaded = true; mod.listLoaded = true; mod.me = { id: 'me' };
-  return { mod, cx, live, storage, ran, sent, opened, context, tick: () => { for (const fn of timers) fn(cx); }, fireAfter: () => { for (const fn of after.splice(0)) fn(cx); }, flush: async () => { while (pending.length) await Promise.all(pending.splice(0)); } };
+  pending.shift(); // The command loop lasts for the lifetime of the view.
+  if (!checkout) {
+    mod.changeSpace(null, '', cx);
+    pending.length = 0;
+    mod.settingsReady = true;
+    mod.sp = { id: 'space', folder: '/repo' }; mod.spaceKey = 'space'; mod.branchLoaded = true; mod.listLoaded = true; mod.me = { id: 'me' };
+  }
+  return { mod, cx, live, storage, ran, sent, opened, execCalls, context, command: (name) => receiveCommand(name), tick: () => { for (const fn of timers) fn(cx); }, fireAfter: () => { for (const fn of after.splice(0)) fn(cx); }, flush: async () => { while (pending.length) await Promise.all(pending.splice(0)); } };
 }
 const settle = () => new Promise(setImmediate);
 const same = (actual, expected) => assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected);
@@ -144,6 +171,95 @@ test('a key problem names itself; other errors do not', () => {
 });
 
 // ── The panel ───────────────────────────────────────────────────────────────
+
+test('a checkout with no provider still starts Linear', async () => {
+  const commands = [];
+  const h = harness({
+    checkout: { id: 'space', active: true, folder: '/repo', branch: 'main' },
+    exec: async (bin) => {
+      commands.push(bin);
+      return { code: 0, stdout: '{"viewer":{"id":"me"},"items":[]}', stderr: '' };
+    },
+  });
+  assert.deepEqual(commands, []);
+  await h.flush();
+  assert.ok(commands.some((bin) => bin.endsWith('/herdr-linear')));
+  assert.ok(find(h.mod.render(), 'issue-view-branch'));
+});
+
+test('GitHub opt-in waits for settings and opens read-only issue rows', async () => {
+  let configure;
+  const issue = { number: 13, title: 'GitHub Issues support', url: 'https://github.com/o/r/issues/13', repository: 'o/r' };
+  const folders = [];
+  const linearCommands = [];
+  const h = harness({
+    singleUse: true,
+    checkout: { id: 'space', active: true, folder: '/repo', branch: 'issue-13' },
+    readTextFile: () => new Promise((resolve) => { configure = resolve; }),
+    readGitHubIssues: async (sp) => {
+      folders.push(sp.folder);
+      return { repository: 'o/r', linked: [issue], items: [issue] };
+    },
+    exec: async (...args) => {
+      linearCommands.push(args);
+      return { code: 1, stdout: '', stderr: '' };
+    },
+  });
+  h.tick();
+  assert.match(strings(h.mod.render()), /Loading issue settings/);
+  assert.deepEqual(folders, []);
+  configure(JSON.stringify({ settings: { provider: 'github' } }));
+  await h.flush();
+  const tree = h.mod.render();
+  assert.match(strings(tree), /GitHub Issues[\s\S]*Linked to this checkout[\s\S]*Open issues/);
+  assert.equal(find(tree, 'issue-view-branch'), undefined);
+  click(tree, 'github-linked-o/r#13', h);
+  click(tree, 'github-open-o/r#13', h);
+  same(h.opened, [issue.url, issue.url]);
+  h.command('refresh');
+  await settle();
+  await h.flush();
+  same(folders, ['/repo', '/repo']);
+  same(linearCommands, []);
+});
+
+test('GitHub refresh drops the old checkout request and recovers from errors or empty results', async () => {
+  const requests = [];
+  const h = harness({
+    singleUse: true,
+    checkout: { id: 'space', active: true, folder: '/first' },
+    readTextFile: async () => '{"settings":{"provider":"github"}}',
+    readGitHubIssues: (sp) => new Promise((resolve, reject) => requests.push({ folder: sp.folder, resolve, reject })),
+  });
+  await settle();
+  assert.match(strings(h.mod.render()), /Loading GitHub issues/);
+  h.live.spaces[0].folder = '/second';
+  h.tick();
+  same(requests.map(({ folder }) => folder), ['/first', '/second']);
+  requests[0].reject(new Error('Unsupported remote for /first'));
+  requests[1].reject(new Error('Sign in with gh auth login'));
+  await h.flush();
+  const tree = h.mod.render();
+  assert.ok(!strings(tree).includes('/first'));
+  assert.match(strings(find(tree, 'github-issue-error')), /gh auth login/);
+  click(tree, 'issue-refresh', h);
+  requests[2].resolve({ repository: 'o/r', items: [], linked: [] });
+  await h.flush();
+  assert.match(strings(h.mod.render()), /No linked issues[\s\S]*No open issues/);
+  h.mod.github.refreshed = Date.now() - 61000;
+  h.tick(); // Hidden.
+  assert.equal(requests.length, 3);
+  h.live.layout = { type: 'row', children: [{ content: { mod: 'branch-issue' } }] };
+  h.tick();
+  requests[3].resolve({
+    repository: 'o/r', linked: [], items: [], linkedWarning: 'Could not read linked issues.',
+  });
+  await h.flush();
+  assert.match(strings(h.mod.render()), /Could not read linked issues\.[\s\S]*No open issues/);
+  h.live.spaces = [];
+  h.tick();
+  assert.match(strings(h.mod.render()), /No active checkout/);
+});
 
 test('a missing key takes over the panel, and can be retried', () => {
   const h = harness();
@@ -569,8 +685,11 @@ test('Create worktree uses Linear\'s branch name and opens a space, the agent ge
   assert.ok(log.some((l) => l.includes('fetch --no-tags origin main')));
   assert.ok(log.some((l) => l.includes('worktree add -b sam/eng-1-fix-login -- /home/sam/.herdr/worktrees/repo/sam-eng-1-fix-login FETCH_HEAD')));
   assert.ok(log.some((l) => l.includes('config branch.sam/eng-1-fix-login.herdr-issue ENG-1')));
+  const add = h.execCalls.find(([, args]) => args[0] === 'worktree' && args[1] === 'add');
+  assert.equal(add[2].timeout, 600_000);
   const [name, args] = h.ran.at(-1);
   assert.equal(name, 'space.new');
+  assert.equal(args.machine, '');
   assert.equal(args.argv[0], 'claude');
   assert.match(args.argv[1], /^You are being given background only[\s\S]*Linear issue ENG-1/);
   assert.equal(h.mod.worktreeForm, null);
@@ -610,7 +729,7 @@ test('the base can be picked, and a stacked branch starts from what it has local
   assert.equal(await added((a) => has(1)(a), 'main'), 'FETCH_HEAD', 'only on the remote');
 });
 
-test('Create worktree can move the issue to Started, and refuses bad names and existing branches', async () => {
+test('Create worktree can move the issue to Started, rejects blank names and existing branches', async () => {
   const log = [];
   const h = harness({ exec: gitRepo(log) });
   h.mod.issue = ISSUE({ state: { id: 'todo', name: 'Todo', type: 'unstarted' } });
@@ -618,9 +737,13 @@ test('Create worktree can move the issue to Started, and refuses bad names and e
   h.mod.api = async (r) => { asked.push(r); return ISSUE(); };
   h.mod.showWorktree(h.cx); await h.flush();
   const form = h.mod.worktreeForm;
-  form.name.set_value('../evil');
+  form.name.set_value('');
   h.mod.createWorktree(h.cx); await h.flush();
-  assert.match(form.error, /letters, numbers/);
+  assert.match(form.error, /Enter a worktree name/);
+  assert.equal(log.some((l) => l.includes('worktree add')), false);
+  form.name.set_value('..');
+  h.mod.createWorktree(h.cx); await h.flush();
+  assert.match(form.error, /other than \. or \.\./);
   assert.equal(log.some((l) => l.includes('worktree add')), false);
   form.name.set_value('ok');
   form.start = true;
@@ -633,6 +756,43 @@ test('Create worktree can move the issue to Started, and refuses bad names and e
   assert.match(exists.mod.worktreeForm.error, /already exists/);
 });
 
+test('worktree slugs keep Unicode and hash symbol-only names like Herdr', () => {
+  const { slug } = harness().context;
+  assert.equal(slug('e\u0301'), slug('é'));
+  assert.equal(slug('fix/你好'), 'fix-你好');
+  assert.equal(slug('../evil'), '..-evil');
+  assert.match(slug('🔥'), /^branch-[0-9a-f]{8}$/);
+  assert.notEqual(slug('🔥'), slug('✨'));
+});
+
+test('Create worktree reads Herdr’s directory and safely names a symbol-only worktree', async () => {
+  const appHome = fs.mkdtempSync(path.join(require('os').tmpdir(), 'branch-issue-settings-'));
+  fs.writeFileSync(
+    path.join(appHome, 'settings.json'),
+    JSON.stringify({ worktrees: { directory: '~/Developer/worktrees' } }),
+  );
+  const log = [];
+  try {
+    const h = harness({ exec: gitRepo(log), appHome });
+    h.mod.issue = ISSUE({ branchName: '修复/你好' });
+    h.mod.showWorktree(h.cx);
+    await h.flush();
+    const form = h.mod.worktreeForm;
+    assert.equal(form.branch.value(), '修复/你好');
+    assert.equal(form.name.value(), '修复-你好');
+    form.name.set_value('🔥');
+    form.nameEdited = true;
+    click(h.mod.render(), 'issue-worktree-submit', h);
+    await h.flush();
+    const folder = h.context.slug('🔥');
+    assert.ok(log.some((line) =>
+      line.includes(`worktree add -b 修复/你好 -- /home/sam/Developer/worktrees/repo/${folder} FETCH_HEAD`),
+    ));
+  } finally {
+    fs.rmSync(appHome, { recursive: true, force: true });
+  }
+});
+
 test('an issue\'s worktrees are listed, and a click switches to or opens their space', async () => {
   const h = harness({ exec: git([['--get-regexp', 'branch.fix.herdr-issue ENG-1\n'], ['worktree list', 'worktree /wt/eng\nHEAD a\nbranch refs/heads/fix\n\n']]) });
   h.mod.issue = ISSUE();
@@ -640,7 +800,7 @@ test('an issue\'s worktrees are listed, and a click switches to or opens their s
   let tree = h.mod.render();
   assert.match(strings(find(tree, 'issue-worktree-row-0')), /eng\s+fix/);
   find(tree, 'issue-worktree-row-0').handlers.click({}, h.cx);
-  assert.equal(h.ran.at(-1)[0], 'space.new');
+  same(h.ran.at(-1), ['space.new', { folder: '/wt/eng', machine: '', tab: 'eng' }]);
   h.live.spaces = [{ id: 'wt', folder: '/wt/eng' }];
   h.mod.spaceKey = 'space';
   tree = h.mod.render();
@@ -678,4 +838,21 @@ test('the state chooser follows the workflow, not the order Linear returns', () 
   const { context: m } = harness();
   const names = (list) => m.workflowOrder(list).map((s) => s.name);
   same(names([{ name: 'Canceled', type: 'canceled' }, { name: 'Backlog', type: 'backlog' }, { name: 'In Progress', type: 'started' }, { name: 'Duplicate', type: 'canceled' }, { name: 'Done', type: 'completed' }, { name: 'Todo', type: 'unstarted' }]), ['Backlog', 'Todo', 'In Progress', 'Done', 'Canceled', 'Duplicate']);
+});
+
+test('Better Search can ask for an issue: it opens once, in the space it was asked for, while fresh', () => {
+  const h = harness();
+  const opened = [];
+  h.mod.openIssue = (identifier) => opened.push(identifier);
+  h.live.spaces = [{ id: 'space', active: true, folder: '/repo', branch: null, machine: null, tabs: [] }];
+  h.mod.spaceKey = 'local:space:/repo:';
+  h.live.shared['branch-issue.open'] = { space: 'other', identifier: 'ENG-1', at: Date.now() };
+  h.tick();
+  h.live.shared['branch-issue.open'] = { space: 'space', identifier: 'ENG-2', at: Date.now() };
+  h.tick();
+  h.tick();
+  h.live.shared['branch-issue.open'] = { space: 'space', identifier: 'ENG-3', at: Date.now() - 60000 };
+  h.tick();
+  assert.deepEqual(opened, ['ENG-2']);
+  assert.equal(h.mod.opening?.identifier, 'ENG-2', 'busy until it arrives');
 });
