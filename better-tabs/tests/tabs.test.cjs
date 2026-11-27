@@ -341,13 +341,29 @@ test("tab insertion boundaries handle both directions and disappeared tabs", () 
   assert.equal(h.tabMoveIndex(tabs, "removed", "a", false), null);
 });
 
-test("leaving the bar cancels a tab drag instead of moving or selecting another tab", () => {
+test("a tab drag follows the pointer off the bar and a release there cancels it", () => {
   const h = harness({ buttons: [] });
   const el = h.tabs.render(h.cx);
+  const root = h.find(el, "better-tabs-root").handlers;
+  const bounds = { x: 0, y: 0, width: 1200, height: 40 };
   h.find(el, "tab-t1").handlers["on_mouse_down:left"]({ position: { x: 20, y: 15 } }, h.cx);
-  if (h.tabs.tabDrag) h.tabs.tabDrag.pressedAt = 0;
-  h.find(el, "better-tabs-root").handlers.on_hover(false, h.cx);
-  h.find(el, "tab-t2").handlers["on_mouse_up:left"]({}, h.cx);
+  h.tabs.tabDrag.pressedAt = 0;
+  h.find(el, "tab-t2").handlers.on_mouse_move(
+    { position: { x: 160, y: 15 }, local_position: { x: 60 }, bounds: { x: 100, y: 0, width: 100, height: 30 } },
+    h.cx,
+  );
+  root.on_hover(false, h.cx);
+  const away = { position: { x: 300, y: 400 }, local_position: { x: 300, y: 400 }, bounds };
+  root.on_window_mouse_move({ ...away, pressed_button: "left" }, h.cx);
+  assert.equal(h.tabs.tabDrag.point.y, 400);
+  assert.equal(h.tabs.tabDrag.target, null);
+  assert.ok(h.find(h.tabs.render(h.cx), "drag-preview"));
+  root["on_window_mouse_up:left"](away, h.cx);
+  assert.equal(h.tabs.tabDrag, null);
+  // A release outside the window: the next move reports no button.
+  h.find(el, "tab-t1").handlers["on_mouse_down:left"]({ position: { x: 20, y: 15 } }, h.cx);
+  root.on_window_mouse_move({ ...away, local_position: { x: 30, y: 15 } }, h.cx);
+  assert.equal(h.tabs.tabDrag, null);
   assert.equal(h.calls.length, 0);
 });
 

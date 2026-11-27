@@ -22,7 +22,7 @@ No requirements. The mod runs no programs and reaches no network. It runs Herdr 
 
 ## Use
 
-- **Drag tabs** to reorder them. A separate line in the gap between tabs shows where the tab will land. Dropping on **+** puts it last; leaving the bar cancels.
+- **Drag tabs** to reorder them. A separate line in the gap between tabs shows where the tab will land. Dropping on **+** puts it last. The dragged copy keeps following the pointer off the bar, and releasing it there cancels.
 - **Quick clicks never drag:** a drag starts only once a press has lasted 400ms (`tabs.drag_delay`) and the pointer has moved 12px.
 - **Tabs wrap** onto more lines, and the bar grows to hold them, then shrinks back as tabs close.
 - The **+** sits right after the last tab.

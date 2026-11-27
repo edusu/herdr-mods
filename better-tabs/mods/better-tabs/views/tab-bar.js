@@ -204,6 +204,8 @@ export const tabBarMethods = {
         }
       })
       .on_mouse_move((event, cx) => this.movePointer(event, cx))
+      .on_window_mouse_move((event, cx) => this.windowMove(event, cx))
+      .on_window_mouse_up("left", (event, cx) => this.windowUp(event, cx))
       .on_scroll_wheel((event) => this.wheelTabs(event))
       .on_mouse_up("left", (_event, cx) => {
         this.commitTabDrag(cx);
@@ -211,7 +213,7 @@ export const tabBarMethods = {
       })
       .on_mouse_down_out((_event, cx) => this.cancelDrags(cx))
       .on_hover((hovered, cx) => {
-        if (!hovered) this.cancelDrags(cx);
+        if (!hovered) this.leaveBar(cx);
       })
       .child(this.renderTabList(t))
       .child(this.renderToolbar(t));

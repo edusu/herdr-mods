@@ -10,6 +10,9 @@ export const DRAG_TIMEOUT_MS = 15000;
 const DRAG_DELAY_MS = 400;
 const DRAG_DISTANCE = 12; // A slow click can slip this far and still be a click.
 
+const overBar = ({ bounds, local_position: point }) =>
+  bounds && point && point.x >= 0 && point.y >= 0 && point.x <= bounds.width && point.y <= bounds.height;
+
 const afterMiddle = (event) =>
   (event.local_position?.x ?? 0) > (event.bounds?.width ?? Infinity) / 2;
 
@@ -158,6 +161,33 @@ export const dragMethods = {
     // Closing the popup on drag-out exposes the real toolbar as a drop surface.
     setShared(DRAG_KEY, { ...drag, active: true, at: Date.now(), target: null });
     closeOverlay(props().overlay);
+  },
+
+  // A tab drag outlives the bar: window events keep it following the pointer.
+  leaveBar(cx) {
+    if (!this.actionDrag()) return;
+    setShared(DRAG_KEY, null);
+    cx.notify();
+  },
+
+  // Window events also come while the pointer is over the bar, where the bar's own
+  // handlers commit the drop, so only a pointer outside it is handled here.
+  windowMove(event, cx) {
+    const drag = this.tabDrag;
+    if (!drag) return;
+    // A release outside the window sends no mouse up.
+    if (event.pressed_button !== "left") return this.windowUp(event, cx, true);
+    if (overBar(event)) return;
+    drag.point = event.position ?? drag.point;
+    drag.active ||= this.dragReady(drag, drag.point);
+    drag.target = null;
+    if (drag.active) cx.notify();
+  },
+
+  windowUp(event, cx, missed = false) {
+    if (!this.tabDrag || (!missed && overBar(event))) return;
+    this.tabDrag = null;
+    cx.notify();
   },
 
   cancelDrags(cx) {
