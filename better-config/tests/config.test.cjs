@@ -299,6 +299,45 @@ test("a key setting is checked, lowercased, and names the action it binds", asyn
   assert.equal(fieldsOf({ properties: { settings: { properties: { key: { type: "string", format: "key" } } } } }, {})[0].type, "text", "no action, no key");
 });
 
+test("a JSON setting is checked as JSON, and its box starts from the default", async () => {
+  const { fieldsOf, parseInput, problemWith, boxValue } = await load();
+  const json = '{\n  "claude": { "model": "opus" }\n}';
+  const jsonSchema = { properties: { settings: { properties: {
+    models: { type: "string", format: "json", default: json },
+    prompt: { type: "string", default: "" },
+  } } } };
+  const [field, text] = fieldsOf(jsonSchema, {});
+  assert.equal(field.type, "json");
+  assert.equal(text.type, "text");
+  assert.equal(problemWith(field, ""), null, "empty is allowed: the mod decides what it means");
+  assert.equal(problemWith(field, '{"a": [1, 2]}'), null);
+  assert.match(problemWith(field, '{"a": 1,}'), /valid JSON/);
+  assert.match(problemWith(field, 5), /JSON text/);
+  assert.deepEqual(parseInput(field, '\n{\n  "a": true\n}\n'), { value: '{\n  "a": true\n}' });
+  assert.match(parseInput(field, "{oops").error, /valid JSON/);
+  assert.equal(boxValue(field, undefined), json, "an unset JSON box shows the default");
+  assert.equal(boxValue(field, ""), "");
+  assert.equal(boxValue(text, undefined), "", "other boxes show the default as a placeholder instead");
+  assert.equal(boxValue(field, { claude: "opus" }), '{\n  "claude": "opus"\n}', "an object written by hand shows as JSON");
+  assert.equal(boxValue({ ...field, default: { a: 1 } }, undefined), '{\n  "a": 1\n}', "so does a default that isn't text");
+  assert.equal(fieldsOf({ properties: { settings: { properties: { n: { type: "integer", format: "json" } } } } }, {})[0].type, "number", "only a string can be JSON text");
+});
+
+test("JSON text is the default when it means the same, however it's laid out", async () => {
+  const { fieldsOf, isDefault, isChanged, editManifest, editSettingsFile } = await load();
+  const jsonSchema = { properties: { settings: { properties: { models: { type: "string", format: "json", default: '{\n  "a": [1, 2]\n}' } } } } };
+  const [field] = fieldsOf(jsonSchema, {});
+  assert.ok(isDefault(field, '{"a":[1,2]}'));
+  assert.equal(isChanged(field, '{"a":[1,2]}'), false);
+  assert.ok(isChanged(field, '{"a":[2,1]}'));
+  assert.ok(isChanged(field, ""), "empty text is a value of its own");
+  assert.ok(isChanged(field, "{oops"));
+  assert.ok(isDefault({ ...field, default: '{"claude":1,"codex":{"x":1,"y":2}}' }, '{"codex":{"y":2,"x":1},"claude":1}'), "key order doesn't count");
+  const raw = JSON.stringify({ version: "1.0.0", settings: { models: '{"a": [2]}' } });
+  assert.deepEqual(JSON.parse(editManifest(raw, field, '{ "a": [1, 2] }')), { version: "1.0.0" }, "a reformatted default removes the key");
+  assert.deepEqual(JSON.parse(editSettingsFile('{"models": "{}"}', field, '{"a":[1,2]}')), {}, "Herdr's settings file compares JSON by meaning too");
+});
+
 test("rebinding moves the action, takes a used key, and gives it back when moved off", async () => {
   const { rebind } = await load();
   const keys = { global: { "cmd-p": "mod.open:picker", "cmd-alt-p": "mod.open:x", "cmd-t": "tab.new" }, terminal: { "ctrl-1": "terminal" } };
@@ -316,4 +355,13 @@ test("rebinding moves the action, takes a used key, and gives it back when moved
   const same = rebind(taken.keys, taken.displaced, "mod.open:x", "cmd-p");
   assert.deepEqual(same.keys.global, taken.keys.global, "binding the same key again changes nothing");
   assert.deepEqual(same.displaced, taken.displaced);
+});
+
+test("a kept JSON value is lost when the default comes back laid out differently", async () => {
+  const { fieldsOf, lostValues } = await load();
+  const jsonSchema = { properties: { settings: { properties: { models: { type: "string", format: "json", default: '{\n  "a": [1, 2]\n}' } } } } };
+  const fields = fieldsOf(jsonSchema, {});
+  const kept = { version: "1.0.0", values: { models: '{"a":2}' } };
+  assert.deepEqual(lostValues(kept, fields, { version: "1.0.0", settings: { models: '{"a":[1,2]}' } }), { models: '{"a":2}' });
+  assert.deepEqual(lostValues(kept, fields, { version: "1.0.0", settings: { models: '{"a":[3]}' } }), {}, "another value is an edit by hand");
 });

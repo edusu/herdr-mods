@@ -3,13 +3,14 @@
 //
 // A mod describes its settings in mods/<name>/mod.schema.json, a JSON Schema of its whole
 // mod.json. Under properties.settings, each setting has the standard title, description,
-// type, default, enum, minimum and maximum, plus format "duration", "size" or "key", and
-// x-step, x-unit and x-labels ({ "id": "Label" } for an enum). A "key" setting names, in
-// x-action, the keys.json action it binds ("mod.open:better-search"). mod.json's own settings block holds
+// type, default, enum, minimum and maximum, plus format "duration", "size", "key" or "json",
+// and x-step, x-unit and x-labels ({ "id": "Label" } for an enum). A "key" setting names, in
+// x-action, the keys.json action it binds ("mod.open:better-search"). A "json" setting is a
+// string holding JSON, edited in a multi-line box. mod.json's own settings block holds
 // only what the person changed. A key there the schema doesn't describe still shows.
 
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
-export const TYPES = ["boolean", "number", "choice", "duration", "size", "key", "text", "list"];
+export const TYPES = ["boolean", "number", "choice", "duration", "size", "key", "json", "text", "list"];
 const DURATION = /^\s*\d+(?:\.\d+)?\s*(ms|s|m|h)\s*$/;
 const SIZE = /^\s*\d+(?:\.\d+)?\s*(B|KB|MB)\s*$/i;
 // "cmd-p", "cmd-alt-shift-]", "ctrl--": keys.json's spelling, without spaces.
@@ -81,6 +82,7 @@ function typeOf(spec) {
   if (Array.isArray(spec.enum)) return "choice";
   if (spec.format === "duration" || spec.format === "size") return spec.format;
   if (spec.format === "key" && typeof spec["x-action"] === "string") return "key";
+  if (spec.format === "json" && types.includes("string")) return "json";
   if (types.includes("boolean")) return "boolean";
   if (types.includes("integer") || types.includes("number")) return "number";
   if (types.includes("array")) return "list";
@@ -178,6 +180,16 @@ export function problemWith(field, value) {
     return Array.isArray(value) && value.every((v) => typeof v === "string")
       ? null
       : "Should be a list of words.";
+  if (type === "json") {
+    if (typeof value !== "string") return "Should be JSON text.";
+    if (!value.trim()) return null;
+    try {
+      JSON.parse(value);
+      return null;
+    } catch (e) {
+      return `Isn't valid JSON: ${e.message}`;
+    }
+  }
   return typeof value === "string" ? null : "Should be text.";
 }
 
@@ -199,10 +211,39 @@ export function showValue(value) {
   return Array.isArray(value) ? value.join(", ") : String(value);
 }
 
+// What a setting's text box holds. A JSON box has no placeholder to show the default in,
+// so an unset JSON setting starts from its default, ready to edit. A JSON value that isn't
+// text, such as an object written into mod.json by hand, shows as JSON so it can be read.
+export function boxValue(field, value) {
+  if (field.type !== "json") return showValue(value);
+  const shown = value === undefined ? field.default : value;
+  return shown === undefined || typeof shown === "string" ? showValue(shown) : JSON.stringify(shown, null, 2);
+}
+
+// The same value with every object's keys in order, so key order doesn't count.
+function sortKeys(value) {
+  if (Array.isArray(value)) return value.map(sortKeys);
+  if (!isObject(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortKeys(value[key])]));
+}
+
+// Whether a value is its field's default. JSON text is the default when it means the same,
+// however it's laid out and whatever order its keys come in.
+export function isDefault(field, value) {
+  if (field.type === "json" && typeof value === "string" && typeof field.default === "string") {
+    try {
+      return equal(sortKeys(JSON.parse(value)), sortKeys(JSON.parse(field.default)));
+    } catch {
+      // Text that doesn't parse, or empty text, is compared as it is.
+    }
+  }
+  return equal(value, field.default);
+}
+
 // Set by the person: present and not the default. Without a default, anything present counts.
 export function isChanged(field, value) {
   if (value === undefined) return false;
-  return field.default === undefined ? false : !equal(value, field.default);
+  return field.default === undefined ? false : !isDefault(field, value);
 }
 
 // The person's own values: what Better Config keeps a copy of.
@@ -225,14 +266,15 @@ export function lostValues(kept, fields, manifest) {
   for (const [key, value] of Object.entries(kept.values)) {
     const now = getPath(manifest?.settings, key);
     if (equal(now, value)) continue;
-    const fallback = fields.get(key)?.default;
-    if (now === undefined || (fallback !== undefined && equal(now, fallback)) || updated) lost[key] = value;
+    const field = fields.get(key);
+    const backToDefault = field?.default !== undefined && isDefault(field, now);
+    if (now === undefined || backToDefault || updated) lost[key] = value;
   }
   return lost;
 }
 
 function editSettings(settings, field, value) {
-  if (value === undefined || equal(value, field.default)) deletePath(settings, field.key);
+  if (value === undefined || isDefault(field, value)) deletePath(settings, field.key);
   else setPath(settings, field.key, value);
 }
 
