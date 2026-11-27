@@ -797,7 +797,7 @@ export default class BetterConfig extends View {
   }
 
   // A box's text follows the file while the person isn't typing in it.
-  follow(id, box, field, value) {
+  followBox(id, box, field, value) {
     const shown = boxValue(field, value);
     if (box.focused || box.shown === shown) return;
     box.state.set_value(shown);
@@ -818,7 +818,7 @@ export default class BetterConfig extends View {
     const id = `${mod.name}:${field.key}`;
     const box = this.inputs[id];
     if (!box) return div().text_size(13).text_color(t.dim).child(showValue(value));
-    this.follow(id, box, field, value);
+    this.followBox(id, box, field, value);
     return this.boxFrame(t, id, box)
       .w(field.type === "text" || field.type === "list" ? 240 : 120)
       .h(28)
@@ -834,7 +834,7 @@ export default class BetterConfig extends View {
     const id = `${mod.name}:${field.key}`;
     const box = this.inputs[id];
     if (!box) return div().text_size(13).text_color(t.dim).child(boxValue(field, value));
-    this.follow(id, box, field, value);
+    this.followBox(id, box, field, value);
     return this.boxFrame(t, id, box).w_full().h(JSON_HEIGHT).p(6).child(Editor.new(box.state).size_full());
   }
 

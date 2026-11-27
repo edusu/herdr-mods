@@ -365,3 +365,9 @@ test("a kept JSON value is lost when the default comes back laid out differently
   assert.deepEqual(lostValues(kept, fields, { version: "1.0.0", settings: { models: '{"a":[1,2]}' } }), { models: '{"a":2}' });
   assert.deepEqual(lostValues(kept, fields, { version: "1.0.0", settings: { models: '{"a":[3]}' } }), {}, "another value is an edit by hand");
 });
+
+test("Better Config's view defines each method once, so a merge can't shadow one", () => {
+  const source = fs.readFileSync(path.join(root, "mods/better-config/main.js"), "utf8");
+  const names = [...source.matchAll(/^  (?:async )?([A-Za-z_]\w*)\(.*\)\s*\{$/gm)].map((m) => m[1]);
+  assert.deepEqual(names.filter((n, i) => names.indexOf(n) !== i), []);
+});
